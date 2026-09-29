@@ -40,8 +40,13 @@ jobs:
             common/build/reports/tests/
             mobile/build/reports/lint-results-debug.html
   release:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: check
+    permissions:
+      contents: write
+    concurrency:
+      group: android-release-main
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -95,6 +100,78 @@ jobs:
           name: diplay-release-apk
           path: mobile/build/outputs/apk/release/*.apk
           if-no-files-found: error
+      - name: Read app version
+        if: steps.signing.outputs.available == 'true'
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' mobile/build.gradle.kts | head -n 1)"
+          if [[ -z "$version" ]]; then
+            echo "::error::Could not read app version from mobile/build.gradle.kts"
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+      - name: Publish or update GitHub Release
+        if: steps.signing.outputs.available == 'true'
+        uses: actions/github-script@v7
+        env:
+          APP_VERSION: ${{ steps.version.outputs.value }}
+        with:
+          script: |
+            const fs = require('fs');
+            const version = process.env.APP_VERSION;
+            const tag = `v${version}`;
+            const assetName = `DiPlay-${version}.apk`;
+            const apkDir = 'mobile/build/outputs/apk/release';
+            const apks = fs.readdirSync(apkDir).filter(name => name.endsWith('.apk'));
+            if (apks.length !== 1) throw new Error(`Expected one release APK, found ${apks.length}`);
+            const apkPath = `${apkDir}/${apks[0]}`;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            let release;
+            try {
+              ({ data: release } = await github.rest.repos.getReleaseByTag({ owner, repo, tag }));
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              ({ data: release } = await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                target_commitish: context.sha,
+                name: `DiPlay ${tag}`,
+                body: `Android APK for DiPlay ${version}.`,
+                draft: false,
+                prerelease: false,
+                make_latest: 'true',
+              }));
+            }
+            await github.rest.repos.updateRelease({
+              owner,
+              repo,
+              release_id: release.id,
+              body: `Latest Android APK for DiPlay ${version}.`,
+              draft: false,
+              prerelease: false,
+              make_latest: 'true',
+            });
+            for (const asset of release.assets) {
+              if (asset.name === assetName) {
+                await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: asset.id });
+              }
+            }
+            await github.rest.repos.uploadReleaseAsset({
+              owner,
+              repo,
+              release_id: release.id,
+              name: assetName,
+              data: fs.readFileSync(apkPath),
+              headers: {
+                'content-type': 'application/vnd.android.package-archive',
+                'content-length': fs.statSync(apkPath).size,
+              },
+            });
+            core.notice(`Published ${assetName} to ${tag}`);
       - name: Remove temporary signing key
         if: always() && steps.signing.outputs.available == 'true'
         run: rm -f "$RUNNER_TEMP/diplay-release.jks"
