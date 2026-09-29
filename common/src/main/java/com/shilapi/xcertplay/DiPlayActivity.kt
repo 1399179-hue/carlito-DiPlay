@@ -34,12 +34,16 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.shilapi.xcertplay.airplay.CarPlayClusterDisplay
+import com.shilapi.xcertplay.hud.BydAdbAccess
+import com.shilapi.xcertplay.hud.BydOutputSettings
 import com.shilapi.xcertplay.host.R
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
+import com.shilapi.xcertplay.transport.EvChargingConnectors
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /** DiAuto's visual language, with a connection flow for an independent CarPlay receiver. */
 class DiPlayActivity : ComponentActivity() {
@@ -59,6 +63,8 @@ class DiPlayActivity : ComponentActivity() {
     private var testToneTrack: AudioTrack? = null
     private var toneStop: Runnable? = null
     private var exportButton: Button? = null
+    private var adbStatus: TextView? = null
+    private var adbCheckGeneration = 0
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         connect(notificationTransport)
     }
@@ -378,8 +384,48 @@ class DiPlayActivity : ComponentActivity() {
                         render()
                         reconnectForClusterMap()
                     }, matchButton(10, 56))
+                    toggle(card, getString(R.string.dashboard_map_only_in_small_and_full_navi),
+                        getString(R.string.dashboard_map_only_in_small_and_full_navi_description),
+                        BydOutputSettings.clusterStreamPause(this)) {
+                        BydOutputSettings.setClusterStreamPause(this, it)
+                        if (it) checkAdbAccess(mayAsk = true)
+                    }
                 }
             }
+            toggle(card, getString(R.string.car_battery_for_the_iphone),
+                getString(R.string.car_battery_for_the_iphone_description),
+                BydOutputSettings.batteryToIphone(this)) {
+                BydOutputSettings.setBatteryToIphone(this, it)
+                if (it) {
+                    checkAdbAccess(mayAsk = true, reconnectWhenReady = CarPlayBackgroundSession.hasSession())
+                } else if (CarPlayBackgroundSession.hasSession()) {
+                    connect(AirPlayPersistence.loadWirelessEnabled(this))
+                }
+            }
+            val connectors = EvChargingConnectors.entries
+            choice(card, getString(R.string.charging_connectors), connectors.map { it.localizedLabel(this) },
+                connectors.indexOf(BydOutputSettings.chargingConnectors(this))) {
+                BydOutputSettings.setChargingConnectors(this, connectors[it])
+            }
+            val lowCharge = BydOutputSettings.lowChargePresets
+            choice(card, getString(R.string.low_charge_warning), lowCharge.map {
+                    getString(if (it == BydOutputSettings.DEFAULT_LOW_CHARGE_PERCENT) R.string.percent_default else R.string.percent_value, it)
+                },
+                lowCharge.indexOf(BydOutputSettings.lowChargePercent(this)).coerceAtLeast(0), reconnects = false) {
+                BydOutputSettings.setLowChargePercent(this, lowCharge[it])
+            }
+            adbStatus = label("", 14, MUTED).also { status ->
+                card.addView(status)
+            }
+            if (BydOutputSettings.clusterStreamPause(this) || BydOutputSettings.batteryToIphone(this)) checkAdbAccess(mayAsk = false)
+            card.addView(button(getString(R.string.check_adb_access), false) { checkAdbAccess(mayAsk = true) }, matchButton(10, 56))
+            card.addView(button(getString(R.string.apply_and_reconnect), false) {
+                if (BydOutputSettings.batteryToIphone(this)) {
+                    checkAdbAccess(mayAsk = true, reconnectWhenReady = true)
+                } else {
+                    connect(AirPlayPersistence.loadWirelessEnabled(this))
+                }
+            }, matchButton(10, 56))
         }
         section(content, getString(R.string.permissions_and_connection_help), R.drawable.ic_dp_permissions) { card ->
             card.addView(label(getString(R.string.nearby_devices_connects_your_iphone_microphone_enables_sir), 16, MUTED))
@@ -628,6 +674,45 @@ class DiPlayActivity : ComponentActivity() {
             }
         }
         dialog.show()
+    }
+
+    // The car's approval dialog for DiPlay's ADB key opens only from here, never while driving.
+    private fun checkAdbAccess(mayAsk: Boolean, reconnectWhenReady: Boolean = false) {
+        val status = adbStatus ?: return
+        val generation = ++adbCheckGeneration
+        status.setTextColor(MUTED)
+        status.text = getString(if (mayAsk) R.string.adb_checking_may_ask else R.string.adb_checking)
+        Thread({
+            val result = runCatching { BydAdbAccess.check(applicationContext, mayAsk) }.getOrNull()
+            runOnUiThread {
+                if (adbStatus !== status || generation != adbCheckGeneration || isFinishing || isDestroyed) return@runOnUiThread
+                status.setTextColor(if (result?.state == BydAdbAccess.State.READY) MUTED else WARNING)
+                status.text = adbStatusText(result)
+                if (reconnectWhenReady && BydOutputSettings.batteryToIphone(this) &&
+                    result?.state == BydAdbAccess.State.READY && result.batteryPercent != null) {
+                    connect(AirPlayPersistence.loadWirelessEnabled(this))
+                }
+            }
+        }, "diplay-adb-check").start()
+    }
+
+    private fun adbStatusText(result: BydAdbAccess.Status?): String = when (result?.state) {
+        null -> getString(R.string.adb_check_failed)
+        BydAdbAccess.State.READY -> listOfNotNull(
+            getString(R.string.adb_access_ready),
+            result.dashboardMode?.let {
+                getString(if (result.dashboardShowsMap) R.string.adb_dashboard_sends_map else R.string.adb_dashboard_does_not_send_map,
+                    it.localizedLabel(this))
+            },
+            result.batteryPercent?.let { getString(R.string.adb_battery_reading, it.roundToInt(), result.rangeKm ?: 0) }
+                ?: getString(R.string.adb_battery_unreadable).takeIf { BydOutputSettings.batteryToIphone(this) },
+            getString(R.string.adb_battery_reconnect).takeIf {
+                BydOutputSettings.batteryToIphone(this) && result.batteryPercent != null
+            },
+        ).joinToString(" ")
+        BydAdbAccess.State.NOT_APPROVED -> getString(R.string.adb_not_approved)
+        BydAdbAccess.State.ADB_OFF -> getString(R.string.adb_off)
+        BydAdbAccess.State.PAIRING_ONLY -> getString(R.string.adb_pairing_only)
     }
 
     // The cluster screen is described at connection time, so a running session reconnects over
@@ -1004,19 +1089,19 @@ class DiPlayActivity : ComponentActivity() {
         line.addView(Switch(this).apply { contentDescription = title; isChecked = value; minHeight = dp(56); buttonTintList = ColorStateList.valueOf(ACCENT); setOnCheckedChangeListener { _, checked -> save(checked) } })
         parent.addView(line)
     }
-    private fun choice(parent: LinearLayout, title: String, options: List<String>, current: Int, save: (Int) -> Unit) {
+    private fun choice(parent: LinearLayout, title: String, options: List<String>, current: Int, reconnects: Boolean = true, save: (Int) -> Unit) {
         var selection = current
         val button = button("$title · ${options[selection]}", false) {}
         button.setOnClickListener {
             var pendingSelection = selection
             AlertDialog.Builder(this).setTitle(title)
                 .setSingleChoiceItems(options.toTypedArray(), selection) { _, index -> pendingSelection = index }
-                .setPositiveButton(if (CarPlayBackgroundSession.hasSession()) getString(R.string.apply_and_reconnect) else getString(R.string.save)) { _, _ ->
+                .setPositiveButton(getString(if (reconnects && CarPlayBackgroundSession.hasSession()) R.string.apply_and_reconnect else R.string.save)) { _, _ ->
                     if (pendingSelection != selection) {
                         selection = pendingSelection
                         save(selection)
                         button.text = "$title · ${options[selection]}"
-                        if (CarPlayBackgroundSession.hasSession()) {
+                        if (reconnects && CarPlayBackgroundSession.hasSession()) {
                             connect(AirPlayPersistence.loadWirelessEnabled(this))
                         }
                     }
