@@ -51,7 +51,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Check release signing configuration
+      - name: Check release signing and CarPlay authentication
         id: signing
         shell: bash
         env:
@@ -59,12 +59,14 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          MFI_IDENTITY_BASE64: ${{ secrets.DIPLAY_AUTH_IDENTITY_BASE64 }}
+          MFI_CERTIFICATE_BASE64: ${{ secrets.DIPLAY_AUTH_CERTIFICATE_BASE64 }}
         run: |
-          if [[ -n "$KEYSTORE_BASE64" && -n "$KEYSTORE_PASSWORD" && -n "$KEY_ALIAS" && -n "$KEY_PASSWORD" ]]; then
+          if [[ -n "$KEYSTORE_BASE64" && -n "$KEYSTORE_PASSWORD" && -n "$KEY_ALIAS" && -n "$KEY_PASSWORD" && -n "$MFI_IDENTITY_BASE64" && -n "$MFI_CERTIFICATE_BASE64" ]]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Release APK signing is not configured. Add ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD as repository Actions secrets to enable signed release builds."
+            echo "::notice::Release is not configured. Add the four ANDROID_* signing secrets and DIPLAY_AUTH_IDENTITY_BASE64 plus DIPLAY_AUTH_CERTIFICATE_BASE64 as repository Actions secrets."
           fi
       - uses: actions/setup-java@v4
         if: steps.signing.outputs.available == 'true'
@@ -85,6 +87,28 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/diplay-release.jks"
+      - name: Prepare CarPlay authentication assets
+        if: steps.signing.outputs.available == 'true'
+        shell: bash
+        env:
+          MFI_IDENTITY_BASE64: ${{ secrets.DIPLAY_AUTH_IDENTITY_BASE64 }}
+          MFI_CERTIFICATE_BASE64: ${{ secrets.DIPLAY_AUTH_CERTIFICATE_BASE64 }}
+        run: |
+          set -euo pipefail
+          auth_dir="$RUNNER_TEMP/diplay-auth-assets/offline-mfi"
+          mkdir -p "$auth_dir"
+          printf '%s' "$MFI_IDENTITY_BASE64" | base64 --decode > "$auth_dir/identity.pk8"
+          printf '%s' "$MFI_CERTIFICATE_BASE64" | base64 --decode > "$auth_dir/certificate.p7b"
+          test -s "$auth_dir/identity.pk8"
+          test -s "$auth_dir/certificate.p7b"
+          openssl pkey -inform DER -in "$auth_dir/identity.pk8" -noout -check >/dev/null
+          openssl pkcs7 -inform DER -in "$auth_dir/certificate.p7b" -print_certs -noout >/dev/null
+          key_fingerprint="$(openssl pkey -inform DER -in "$auth_dir/identity.pk8" -pubout -outform DER | sha256sum | cut -d' ' -f1)"
+          cert_fingerprint="$(openssl pkcs7 -inform DER -in "$auth_dir/certificate.p7b" -print_certs -outform PEM | openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | cut -d' ' -f1)"
+          if [[ "$key_fingerprint" != "$cert_fingerprint" ]]; then
+            echo "::error::CarPlay identity and certificate do not match."
+            exit 1
+          fi
       - name: Build signed release APK
         if: steps.signing.outputs.available == 'true'
         env:
@@ -92,6 +116,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          DIPLAY_AUTH_ASSETS_DIR: ${{ runner.temp }}/diplay-auth-assets
         run: ./gradlew :mobile:assembleRelease --stacktrace
       - name: Upload signed release APK
         if: steps.signing.outputs.available == 'true'
@@ -174,4 +199,4 @@ jobs:
             core.notice(`Published ${assetName} to ${tag}`);
       - name: Remove temporary signing key
         if: always() && steps.signing.outputs.available == 'true'
-        run: rm -f "$RUNNER_TEMP/diplay-release.jks"
+        run: rm -f "$RUNNER_TEMP/diplay-release.jks" && rm -rf "$RUNNER_TEMP/diplay-auth-assets"
