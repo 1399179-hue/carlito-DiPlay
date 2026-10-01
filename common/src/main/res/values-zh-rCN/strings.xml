@@ -453,4 +453,12 @@
     <string name="geely_hud_navigation_description">连接 CarPlay 时，在副屏显示下一步方向、距离和道路名称。首次使用时请允许显示在其他应用上层。</string>
     <string name="geely_steering_wheel">方向盘按键</string>
     <string name="geely_steering_wheel_description">使用方向盘媒体按键控制 CarPlay，并用语音键打开 Siri。</string>
+    <string name="wheel_speed_for_tunnels">隧道中的车轮速度 · 需要 ADB</string>
+    <string name="wheel_speed_for_tunnels_description">开启“向 iPhone 报告位置”后，DiPlay 还会发送车轮速度和挡位，让 Apple 地图在隧道和停车场里也能继续推算你的位置。会重新连接 CarPlay。需要在车机上开启网络 ADB。</string>
+    <string name="video_while_parked">驻车时播放视频 · 需要 ADB</string>
+    <string name="video_while_parked_description">iOS 27：在 iPhone 上投送到 CarPlay 的视频会在车辆处于 P 挡时在车机屏幕上播放。挂出 P 挡时播放器会关闭；没有 ADB 时视频保持关闭，iPhone 只播放声音。普通 HTTPS 视频（例如来自 Safari）可以播放；受 FairPlay 保护的视频（例如 Apple TV+）需要获得授权的接收器，在这里无法播放。会重新连接 CarPlay。需要车机开启网络 ADB。</string>
+    <string name="video_back_to_carplay">返回 CarPlay</string>
+    <string name="video_play">播放</string>
+    <string name="video_pause">暂停</string>
+    <string name="video_cannot_play">此视频无法在车机屏幕上播放。受保护的视频（例如 Apple TV+）需要获得授权的接收器。</string>
 </resources>
