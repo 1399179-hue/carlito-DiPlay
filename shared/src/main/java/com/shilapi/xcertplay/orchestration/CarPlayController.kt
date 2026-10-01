@@ -28,6 +28,9 @@ import com.shilapi.xcertplay.airplay.AirPlaySession
 import com.shilapi.xcertplay.airplay.AirPlaySessionListener
 import com.shilapi.xcertplay.airplay.PairingStore
 import com.shilapi.xcertplay.hud.BydNavigationOutputs
+import com.shilapi.xcertplay.hud.BydHudRouteChange
+import com.shilapi.xcertplay.hud.BydHudRouteState
+import com.shilapi.xcertplay.hud.CarPlayHudGuidance
 import com.shilapi.xcertplay.iap2.session.Iap2Session
 import com.shilapi.xcertplay.mfi.Iap2MfiAuthenticationClient
 import com.shilapi.xcertplay.mfi.MfiAuthenticationClient
@@ -195,9 +198,12 @@ class CarPlayController(
     private var clusterUiStream: Pair<AirPlaySession, Int>? = null
     private var clusterUiShown = true
     private val playbackStatus = com.shilapi.xcertplay.media.CarPlayPlaybackStatus()
+    private val hudRouteLock = Any()
+    private val hudRouteState = BydHudRouteState()
 
     /** Told when the iPhone starts or stops playing media; may run on any thread. */
     @Volatile var playbackListener: ((Boolean) -> Unit)? = null
+    @Volatile private var hudNavigationListener: ((CarPlayHudGuidance?) -> Unit)? = null
     @Volatile private var hotspot: WirelessHotspotManager? = null
     @Volatile private var bonjour: CarPlayBonjour? = null
     @Volatile private var bluetoothSocket: BluetoothSocket? = null
@@ -246,6 +252,7 @@ class CarPlayController(
             if (activeSession === session) {
                 activeSession = null
                 BydNavigationOutputs.endNow()
+                clearHudGuidance()
                 synchronized(playbackStatus) { playbackStatus.clear() }?.let { playing -> playbackListener?.invoke(playing) }
             }
             debugLog("AirPlay session ended peer=${session.host}")
@@ -386,6 +393,19 @@ class CarPlayController(
         }
     }
 
+    /** Delivers the current next-turn prompt to the active vehicle display, including after reattach. */
+    fun setHudNavigationListener(listener: ((CarPlayHudGuidance?) -> Unit)?) {
+        hudNavigationListener = listener
+        val current = synchronized(hudRouteLock) {
+            hudRouteState.current()?.let {
+                CarPlayHudGuidance(it.distanceMeters, it.maneuver, it.road)
+            }
+        }
+        mainHandler.post {
+            if (hudNavigationListener === listener) listener?.invoke(current)
+        }
+    }
+
     override fun close() {
         synchronized(this) {
             if (closed) return
@@ -393,6 +413,7 @@ class CarPlayController(
         }
         BydNavigationOutputs.endNow()
         BydNavigationOutputs.clearClusterStreamControl(::applyClusterUi)
+        clearHudGuidance()
         closeReceivers()
         availabilityPollGeneration.incrementAndGet()
         wirelessGeneration.incrementAndGet()
@@ -463,10 +484,26 @@ class CarPlayController(
         }
     }
 
-    // HUD (SOME/IP) and cluster (AMap broadcast) keep separate state so one failing cannot stall the other.
+    // BYD output and the in-app secondary-display HUD keep independent state so one failure cannot stall the other.
     private fun onRouteFrame(frame: com.shilapi.xcertplay.iap2.wire.Iap2Frame) {
         BydNavigationOutputs.onFrame(frame)
+        var changed = false
+        val guidance = synchronized(hudRouteLock) {
+            val update = hudRouteState.accept(frame.messageId, frame.payload)
+            changed = update != BydHudRouteChange.NONE
+            hudRouteState.current()?.let {
+                CarPlayHudGuidance(it.distanceMeters, it.maneuver, it.road)
+            }
+        }
+        if (changed) {
+            mainHandler.post { hudNavigationListener?.invoke(guidance) }
+        }
         synchronized(playbackStatus) { playbackStatus.accept(frame) }?.let { playing -> playbackListener?.invoke(playing) }
+    }
+
+    private fun clearHudGuidance() {
+        synchronized(hudRouteLock) { hudRouteState.clear() }
+        mainHandler.post { hudNavigationListener?.invoke(null) }
     }
 
     private fun startMfi() {

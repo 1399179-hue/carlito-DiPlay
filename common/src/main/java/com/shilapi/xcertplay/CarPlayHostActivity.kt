@@ -589,6 +589,8 @@ class CarPlayHostActivity : ComponentActivity() {
             clusterMonitor?.stop()
             clusterMonitor = null
         }
+        GeelyHudProjection.attach(this)
+        controller?.setHudNavigationListener(GeelyHudProjection::update)
         ensureClusterPresentation()
         maybeStartCarPlay()
         applyFullscreenMode()
@@ -764,6 +766,8 @@ class CarPlayHostActivity : ComponentActivity() {
     override fun onDestroy() {
         clusterMonitor?.stop()
         dismissClusterPresentation()
+        controller?.setHudNavigationListener(null)
+        GeelyHudProjection.detach(this)
         mainHandler.removeCallbacks(applyDisplaySize)
         mainHandler.removeCallbacks(expireOldLogLines)
         currentSurface?.let { surface ->
@@ -3165,6 +3169,7 @@ class CarPlayHostActivity : ComponentActivity() {
             },
         )
         controller = next
+        next.setHudNavigationListener(GeelyHudProjection::update)
         CarPlayMediaKeys.attach(this, next)
         CarPlayBackgroundSession.store(next, renderer, size.width, size.height, this) { completion ->
             runOnUiThread {

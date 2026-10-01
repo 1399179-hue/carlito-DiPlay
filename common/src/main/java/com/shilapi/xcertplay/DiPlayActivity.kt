@@ -313,6 +313,20 @@ class DiPlayActivity : ComponentActivity() {
             card.addView(saveButton, matchButton(12, 56))
             if (aaosSupported) applyChannelEnabled(!AirPlayPersistence.loadAdvancedAudioChannelMapping(this))
         }
+        section(content, getString(R.string.geely_vehicle), R.drawable.ic_dp_navigation) { card ->
+            toggle(
+                card,
+                getString(R.string.geely_hud_navigation),
+                getString(R.string.geely_hud_navigation_description),
+                AirPlayPersistence.loadGeelyHudEnabled(this),
+            ) { GeelyHudProjection.setEnabled(this, it) }
+            toggle(
+                card,
+                getString(R.string.geely_steering_wheel),
+                getString(R.string.geely_steering_wheel_description),
+                AirPlayPersistence.loadGeelySteeringEnabled(this),
+            ) { CarPlayMediaKeys.setGeelySteeringEnabled(this, it) }
+        }
         if (com.shilapi.xcertplay.hud.BydOutputSettings.available(this)) section(content, getString(R.string.byd_navigation), R.drawable.ic_dp_navigation) { card ->
             toggle(card, getString(R.string.navigation_on_hud_and_instrument_cluster),
                 getString(R.string.show_phone_navigation_arrows_distance_and_street_names_on),

@@ -55,6 +55,8 @@ object AirPlayPersistence {
     private const val KEY_FPS = "display_fps"
     private const val KEY_MEDIA_BUFFER_MS = "media_buffer_ms"
     private const val KEY_CLUSTER_MAP = "cluster_map_enabled"
+    private const val KEY_GEELY_HUD_ENABLED = "geely_hud_enabled"
+    private const val KEY_GEELY_STEERING_ENABLED = "geely_steering_enabled"
     private const val KEY_CLUSTER_MAP_SCALE = "cluster_map_scale_percent"
     private const val KEY_CLUSTER_CONTENT = "cluster_content"
     private const val KEY_CLUSTER_MARKER_X = "cluster_marker_horizontal_step"
@@ -421,6 +423,24 @@ object AirPlayPersistence {
 
     fun saveClusterMapEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_CLUSTER_MAP, enabled).apply()
+    }
+
+    fun loadGeelyHudEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_GEELY_HUD_ENABLED, false)
+
+    fun saveGeelyHudEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_GEELY_HUD_ENABLED, enabled)
+            .apply()
+    }
+
+    fun loadGeelySteeringEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_GEELY_STEERING_ENABLED, false)
+
+    fun saveGeelySteeringEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_GEELY_STEERING_ENABLED, enabled)
+            .apply()
     }
 
     fun loadClusterContent(context: Context): CarPlayClusterDisplay.Content =

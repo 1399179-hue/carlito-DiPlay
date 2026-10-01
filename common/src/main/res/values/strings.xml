@@ -448,4 +448,9 @@
     <string name="adb_battery_reading">Battery: %1$d %%, %2$d km.</string>
     <string name="adb_battery_unreadable">The battery cannot be read on this car, so the iPhone is not told about an electric car.</string>
     <string name="adb_battery_reconnect">If CarPlay connected before the battery was ready, use Apply and reconnect to enable battery reporting.</string>
+    <string name="geely_vehicle">Geely vehicle</string>
+    <string name="geely_hud_navigation">Navigation on the HUD</string>
+    <string name="geely_hud_navigation_description">Show the next direction, distance and road name on the car’s secondary HUD display while CarPlay is connected. Allow display-over-apps access when asked.</string>
+    <string name="geely_steering_wheel">Steering-wheel controls</string>
+    <string name="geely_steering_wheel_description">Use the media buttons to control CarPlay and the voice button to open Siri.</string>
 </resources>

@@ -33,6 +33,7 @@ internal object CarPlayMediaKeys {
     private var focusRequest: AudioFocusRequest? = null
     private var focusHeld = false
     private var appContext: Context? = null
+    private var geelyInput: GeelySteeringWheelInputChannel? = null
 
     @Synchronized
     fun attach(context: Context, next: CarPlayController) {
@@ -40,6 +41,7 @@ internal object CarPlayMediaKeys {
         appContext = context.applicationContext
         controller = next
         next.playbackListener = ::onIphonePlaying
+        syncGeelyInputLocked()
     }
 
     /** Ends key handling for [expected]; a newer controller's state is left alone. */
@@ -59,6 +61,53 @@ internal object CarPlayMediaKeys {
     /** The iPhone started or stopped playing; may run on any thread. */
     fun onIphonePlaying(playing: Boolean) {
         if (playing) mainHandler.post { synchronized(this) { regainFocusLocked() } }
+    }
+
+    /** Changes the Geely steering listener immediately if a CarPlay session is already active. */
+    fun setGeelySteeringEnabled(context: Context, enabled: Boolean) {
+        AirPlayPersistence.saveGeelySteeringEnabled(context, enabled)
+        synchronized(this) {
+            appContext = context.applicationContext
+            syncGeelyInputLocked()
+        }
+    }
+
+    private fun syncGeelyInputLocked() {
+        val enabled = controller != null && appContext?.let(AirPlayPersistence::loadGeelySteeringEnabled) == true
+        if (!enabled) {
+            geelyInput?.close()
+            geelyInput = null
+            return
+        }
+        if (geelyInput == null) {
+            geelyInput = GeelySteeringWheelInputChannel(appContext!!, ::onGeelySteeringKey).also {
+                it.setEnabled(true)
+            }
+        }
+    }
+
+    private fun onGeelySteeringKey(event: GeelySteeringKeyEvent) {
+        val mediaButton = when (event.keyCode) {
+            GeelySteeringKeyCodes.MEDIA_PLAY_PAUSE -> CarPlayMediaButton.PLAY_PAUSE
+            GeelySteeringKeyCodes.MEDIA_NEXT, GeelySteeringKeyCodes.SEEK_NEXT -> CarPlayMediaButton.NEXT
+            GeelySteeringKeyCodes.MEDIA_PREVIOUS, GeelySteeringKeyCodes.SEEK_PREVIOUS -> CarPlayMediaButton.PREVIOUS
+            else -> null
+        }
+        if (mediaButton != null &&
+            (event.action == GeelySteeringKeyEvent.ACTION_DOWN || event.action == GeelySteeringKeyEvent.ACTION_SINGLE)
+        ) {
+            send(mediaButton, "Geely steering wheel")
+            return
+        }
+        val voicePress = event.keyCode == GeelySteeringKeyCodes.VOICE_ASSIST &&
+            (event.action == GeelySteeringKeyEvent.ACTION_UP ||
+                event.action == GeelySteeringKeyEvent.ACTION_SINGLE ||
+                event.action == GeelySteeringKeyEvent.ACTION_LONG ||
+                event.action == GeelySteeringKeyEvent.ACTION_DOUBLE)
+        if (voicePress) {
+            val sent = synchronized(this) { controller }?.requestSiri() == true
+            Log.i(TAG, "Geely steering voice key sent=$sent")
+        }
     }
 
     // Another car app (its own Spotify, the radio) took audio focus and with it the steering-wheel
@@ -110,6 +159,8 @@ internal object CarPlayMediaKeys {
     }
 
     private fun releaseLocked() {
+        geelyInput?.close()
+        geelyInput = null
         session?.let {
             it.isActive = false
             it.release()
