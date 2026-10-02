@@ -299,8 +299,10 @@ internal object CarPlayMediaKeys {
  */
 internal class CarPlayMediaCallback(
     private val send: (index: Int, source: String) -> Unit,
-    private val consumesKey: (Int) -> Boolean = { false },
+    private val consumesKey: (Int) -> Boolean,
 ) : MediaSession.Callback() {
+    constructor(send: (index: Int, source: String) -> Unit) : this(send, { false })
+
     override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
         @Suppress("DEPRECATION")
         val event = mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT) ?: return false
