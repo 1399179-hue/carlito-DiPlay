@@ -1,5 +1,16 @@
 # DiPlay 0.2.9 — 2026-10-02
 
+## Update — 2026-10-03
+
+- Add steering button identification in Settings, with assignments for play/pause, next track, previous track and Siri.
+- Fill identified buttons automatically and apply the mapping when saved.
+- Save settings by vehicle and head unit model and upload them to the cloud, resuming uploads when internet access returns.
+- Export saved settings or restore the original controls while retaining the saved configuration.
+
+Button identification requires the head unit to allow button access. Compatibility with individual vehicles still needs physical verification. See [update notes](docs/UPDATE-NOTES-0.2.9.md).
+
+## Original 0.2.9 changes
+
 - Follow BYD head-unit day/night changes while CarPlay is visible, including firmware that does not reliably deliver Android configuration callbacks.
 - Restore media and navigation audio stream selection to 0–20 and inherit older saved navigation settings when no new selection exists. Vendor-specific outputs depend on head-unit support.
 - Keep CarPlay connected through normal surround-view window changes, preserving video proportions and touch alignment. A connection started in a narrow camera window reconnects once when the window grows to restore the full-screen canvas.

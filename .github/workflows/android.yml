@@ -151,6 +151,8 @@ jobs:
             const version = process.env.APP_VERSION;
             const tag = `v${version}`;
             const assetName = `DiPlay-${version}.apk`;
+            const releaseNotes = fs.readFileSync(`docs/UPDATE-NOTES-${version}.md`, 'utf8').trim();
+            if (!releaseNotes) throw new Error(`Release notes for ${version} are empty`);
             const apkDir = 'mobile/build/outputs/apk/release';
             const apks = fs.readdirSync(apkDir).filter(name => name.endsWith('.apk'));
             if (apks.length !== 1) throw new Error(`Expected one release APK, found ${apks.length}`);
@@ -168,7 +170,7 @@ jobs:
                 tag_name: tag,
                 target_commitish: context.sha,
                 name: `DiPlay ${tag}`,
-                body: `Android APK for DiPlay ${version}.`,
+                body: releaseNotes,
                 draft: false,
                 prerelease: false,
                 make_latest: 'true',
@@ -178,7 +180,7 @@ jobs:
               owner,
               repo,
               release_id: release.id,
-              body: `Latest Android APK for DiPlay ${version}.`,
+              body: releaseNotes,
               draft: false,
               prerelease: false,
               make_latest: 'true',

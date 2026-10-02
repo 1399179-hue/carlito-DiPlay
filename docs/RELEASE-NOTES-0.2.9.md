@@ -2,6 +2,15 @@
 
 Public preview for compatible BYD Android head units. This release includes the contributions from @lpcheng1208 and @romanchukg-cloud, the review corrections, and the floating-map fixes from vehicle testing.
 
+## Steering button update — 3 October 2026
+
+- Identify steering buttons in Settings and assign play/pause, next track, previous track or Siri.
+- Fill mappings automatically and apply them when saved.
+- Save configurations by vehicle and head unit model and upload them to the cloud, with retry when internet access returns.
+- Export saved configurations or restore the original controls.
+
+This update retains version 0.2.9. See the [Chinese and English update notes](UPDATE-NOTES-0.2.9.md). Vehicle compatibility still needs physical verification.
+
 ## Release highlights
 
 - CarPlay now follows BYD head-unit day/night changes while it is on screen, including firmware that does not reliably send Android configuration callbacks.
