@@ -12,7 +12,6 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.SystemClock
-import androidx.core.content.ContextCompat
 import java.io.Closeable
 
 /** Factory-style A2DP-sink handoff for one active CarPlay peer. Does not alter bonding or HFP. */
@@ -45,7 +44,12 @@ internal class GeelyBluetoothAudioGuard(
             return
         }
         try {
-            ContextCompat.registerReceiver(app, receiver, IntentFilter(ACTION_CONNECTION), ContextCompat.RECEIVER_EXPORTED)
+            val filter = IntentFilter(ACTION_CONNECTION)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                app.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+            } else {
+                app.registerReceiver(receiver, filter)
+            }
             registered = true
             val requested = adapter?.getProfileProxy(app, object : BluetoothProfile.ServiceListener {
                 override fun onServiceConnected(profile: Int, connected: BluetoothProfile) = synchronized(this@GeelyBluetoothAudioGuard) {
