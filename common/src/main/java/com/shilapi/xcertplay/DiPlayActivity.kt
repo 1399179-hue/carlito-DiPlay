@@ -66,6 +66,7 @@ class DiPlayActivity : ComponentActivity() {
     private var exportButton: Button? = null
     private var adbStatus: TextView? = null
     private var adbCheckGeneration = 0
+    private var developerVersionTaps = 0
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         connect(notificationTransport)
     }
@@ -94,6 +95,7 @@ class DiPlayActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         languagePreferenceAtCreate = AppLocale.preference(this)
+        SteeringProfiles.scheduleUpload(this)
         com.shilapi.xcertplay.hud.BydNavigationOutputs.onAppOpened(applicationContext)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = BG; window.navigationBarColor = BG
@@ -339,6 +341,12 @@ class DiPlayActivity : ComponentActivity() {
                 AirPlayPersistence.loadGeelySteeringEnabled(this),
             ) { CarPlayMediaKeys.setGeelySteeringEnabled(this, it) }
         }
+        section(content, getString(R.string.steering_identification), R.drawable.ic_dp_navigation) { card ->
+            card.addView(label(getString(R.string.steering_panel_intro), 17, MUTED))
+            card.addView(button(getString(R.string.steering_identify), false) {
+                startActivity(Intent(this, SteeringControlsActivity::class.java))
+            }, matchButton(12, 60))
+        }
         if (com.shilapi.xcertplay.hud.BydOutputSettings.available(this)) section(content, getString(R.string.byd_navigation), R.drawable.ic_dp_navigation) { card ->
             toggle(card, getString(R.string.navigation_on_hud_and_instrument_cluster),
                 getString(R.string.show_phone_navigation_arrows_distance_and_street_names_on),
@@ -511,6 +519,13 @@ class DiPlayActivity : ComponentActivity() {
         content.addView(label(getString(R.string.carplay_at_home_in_your_car), 20, MUTED).apply { setPadding(0, dp(8), 0, dp(24)) })
         section(content, "${getString(R.string.about_public_preview_prefix)}${version()}") { card ->
             card.addView(label(getString(R.string.an_independent_carplay_receiver_for_android_head_units_wir), 17, TEXT))
+            card.addView(button(getString(R.string.steering_version, version()), false) {
+                developerVersionTaps++
+                if (developerVersionTaps >= 7) { SteeringProfiles.unlockDeveloper(this); render() }
+            }, matchButton(12, 56))
+            if (SteeringProfiles.developerUnlocked(this)) card.addView(button(getString(R.string.steering_diagnostics), false) {
+                startActivity(Intent(this, SteeringControlsActivity::class.java).putExtra("developer", true))
+            }, matchButton(10, 56))
         }
         section(content, getString(R.string.made_possible_by_open_source)) { card ->
             card.addView(label(getString(R.string.receiver_based_on_xcertplay_licensed_under_gpl_3_0_diplay), 16, MUTED))

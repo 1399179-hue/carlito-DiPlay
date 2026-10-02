@@ -9,6 +9,7 @@ import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.KeyEvent
 import com.shilapi.xcertplay.airplay.CarPlayMediaButton
@@ -34,12 +35,25 @@ internal object CarPlayMediaKeys {
     private var focusHeld = false
     private var appContext: Context? = null
     private var geelyInput: GeelySteeringWheelInputChannel? = null
+    private var keyLogMonitor: SteeringKeyLogMonitor? = null
+    @Volatile private var monitorGeneration = 0
+    private var steeringProfile: SteeringProfile? = null
+    private data class Learning(val owner: Any, val onKey: (SteeringObservedKey?) -> Unit)
+    private var learning: Learning? = null
+    private var learningTimeout: Runnable? = null
+    private var suppressedUntil = 0L
+    private var lastSentButton = -1
+    private var lastSentSource = ""
+    private var lastSentAt = 0L
+    private val observedKeys = ArrayDeque<String>()
+    private val lastSystemTrigger = mutableMapOf<String, Long>()
 
     @Synchronized
     fun attach(context: Context, next: CarPlayController) {
         if (controller !== next) releaseLocked()
         appContext = context.applicationContext
         controller = next
+        steeringProfile = SteeringProfiles.loadEnabled(context)
         next.playbackListener = ::onIphonePlaying
         syncGeelyInputLocked()
     }
@@ -73,40 +87,122 @@ internal object CarPlayMediaKeys {
     }
 
     private fun syncGeelyInputLocked() {
-        val enabled = controller != null && appContext?.let(AirPlayPersistence::loadGeelySteeringEnabled) == true
+        val enabled = controller != null && learning == null && steeringProfile == null &&
+            appContext?.let(AirPlayPersistence::loadGeelySteeringEnabled) == true
         if (!enabled) {
             geelyInput?.close()
             geelyInput = null
-            return
-        }
-        if (geelyInput == null) {
+        } else if (geelyInput == null) {
             geelyInput = GeelySteeringWheelInputChannel(appContext!!, ::onGeelySteeringKey).also {
                 it.setEnabled(true)
             }
         }
+        keyLogMonitor?.close(); keyLogMonitor = null
+        val generation = ++monitorGeneration
+        val needsSystemInput = learning != null || (controller != null && steeringProfile?.bindings?.isNotEmpty() == true)
+        if (needsSystemInput && appContext != null) {
+            keyLogMonitor = SteeringKeyLogMonitor(appContext!!, steeringProfile?.bindings.orEmpty(), learning != null) { key ->
+                mainHandler.post { if (generation == monitorGeneration) onObservedKey(key) }
+            }.also { it.start() }
+        }
     }
 
     private fun onGeelySteeringKey(event: GeelySteeringKeyEvent) {
-        val mediaButton = when (event.keyCode) {
-            GeelySteeringKeyCodes.MEDIA_PLAY_PAUSE -> CarPlayMediaButton.PLAY_PAUSE
-            GeelySteeringKeyCodes.MEDIA_NEXT, GeelySteeringKeyCodes.SEEK_NEXT -> CarPlayMediaButton.NEXT
-            GeelySteeringKeyCodes.MEDIA_PREVIOUS, GeelySteeringKeyCodes.SEEK_PREVIOUS -> CarPlayMediaButton.PREVIOUS
-            else -> null
+        mainHandler.post {
+            if (learning != null || steeringProfile != null) return@post
+            val operation = when (event.keyCode) {
+                GeelySteeringKeyCodes.MEDIA_PLAY_PAUSE -> "play_pause"
+                GeelySteeringKeyCodes.MEDIA_NEXT, GeelySteeringKeyCodes.SEEK_NEXT -> "next"
+                GeelySteeringKeyCodes.MEDIA_PREVIOUS, GeelySteeringKeyCodes.SEEK_PREVIOUS -> "previous"
+                GeelySteeringKeyCodes.VOICE_ASSIST -> "siri"
+                else -> return@post
+            }
+            if (steeringProfile?.bindings?.any { it.operation == operation } == true) return@post
+            val trigger = if (operation == "siri") event.action in 1..4 else event.action == 0 || event.action == 2
+            if (trigger) sendSteeringOperation(operation, "oneos")
         }
-        if (mediaButton != null &&
-            (event.action == GeelySteeringKeyEvent.ACTION_DOWN || event.action == GeelySteeringKeyEvent.ACTION_SINGLE)
-        ) {
-            send(mediaButton, "Geely steering wheel")
+    }
+
+    fun reloadSteeringProfile(context: Context) = synchronized(this) {
+        appContext = context.applicationContext
+        steeringProfile = SteeringProfiles.loadEnabled(context)
+        lastSystemTrigger.clear()
+        syncGeelyInputLocked()
+    }
+
+    fun startSteeringLearning(context: Context, owner: Any, onKey: (SteeringObservedKey?) -> Unit) = synchronized(this) {
+        stopSteeringLearning(owner)
+        appContext = context.applicationContext
+        steeringProfile = SteeringProfiles.loadEnabled(context)
+        learning = Learning(owner, onKey)
+        learningTimeout?.let(mainHandler::removeCallbacks)
+        learningTimeout = Runnable {
+            val callback = synchronized(this) { learning?.takeIf { it.owner === owner }?.onKey }
+            stopSteeringLearning(owner)
+            callback?.invoke(null)
+        }.also { mainHandler.postDelayed(it, 25_000L) }
+        syncGeelyInputLocked()
+    }
+
+    fun stopSteeringLearning(owner: Any) = synchronized(this) {
+        if (learning?.owner !== owner) return@synchronized
+        learning = null
+        learningTimeout?.let(mainHandler::removeCallbacks)
+        learningTimeout = null
+        suppressedUntil = SystemClock.elapsedRealtime() + 500L
+        syncGeelyInputLocked()
+    }
+
+    fun steeringDiagnostics(): String = synchronized(this) {
+        val permitted = appContext?.checkSelfPermission(android.Manifest.permission.READ_LOGS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        "systemLogAccess=$permitted\n" + (keyLogMonitor?.diagnostics() ?: "INACTIVE") + "\n" + observedKeys.joinToString("\n")
+    }
+
+    private fun onObservedKey(key: SteeringObservedKey) {
+        val learner = synchronized(this) {
+            if (observedKeys.size >= 40) observedKeys.removeFirst()
+            observedKeys.addLast("key=${key.keyCode} event=${key.event} source=${key.source} tag=${key.logTag} broadcast=${key.broadcastAction}")
+            learning?.onKey
+        }
+        if (learner != null) { learner(key); return }
+        if (SystemClock.elapsedRealtime() < suppressedUntil) return
+        val profile = synchronized(this) { steeringProfile }
+        val binding = profile?.bindings?.firstOrNull {
+            it.keyCode == key.keyCode && it.source == key.source &&
+                (key.source != "logcat" || it.logTag == key.logTag) &&
+                it.logContains == key.logContains &&
+                (key.source != "broadcast" || (it.broadcastAction == key.broadcastAction && it.keyExtra == key.keyExtra && it.eventExtra == key.eventExtra))
+        }
+        if (binding != null) {
+            if (key.event == binding.event) {
+                val now = SystemClock.elapsedRealtime()
+                val ready = synchronized(this) {
+                    val previous = lastSystemTrigger[binding.inputId]
+                    if (previous != null && now - previous < 180L) false
+                    else { lastSystemTrigger[binding.inputId] = now; true }
+                }
+                if (ready) sendSteeringOperation(binding.operation, key.source)
+            }
             return
         }
-        val voicePress = event.keyCode == GeelySteeringKeyCodes.VOICE_ASSIST &&
-            (event.action == GeelySteeringKeyEvent.ACTION_UP ||
-                event.action == GeelySteeringKeyEvent.ACTION_SINGLE ||
-                event.action == GeelySteeringKeyEvent.ACTION_LONG ||
-                event.action == GeelySteeringKeyEvent.ACTION_DOUBLE)
-        if (voicePress) {
-            val sent = synchronized(this) { controller }?.requestSiri() == true
-            Log.i(TAG, "Geely steering voice key sent=$sent")
+    }
+
+    /** Avoid applying the standard action again when this physical key has a custom mapping. */
+    fun consumesHardwareKey(keyCode: Int): Boolean = synchronized(this) {
+        val standard = CarPlayMediaButton.forKeyCode(keyCode) != null || CarPlayMediaButton.opensSiri(keyCode)
+        ((learning != null || SystemClock.elapsedRealtime() < suppressedUntil) && standard) ||
+            steeringProfile?.bindings?.any { it.keyCode > 0 && it.keyCode == keyCode } == true
+    }
+
+    private fun sendSteeringOperation(operation: String, source: String) {
+        when (operation) {
+            "play_pause" -> send(CarPlayMediaButton.PLAY_PAUSE, source)
+            "next" -> send(CarPlayMediaButton.NEXT, source)
+            "previous" -> send(CarPlayMediaButton.PREVIOUS, source)
+            "siri" -> {
+                val sent = synchronized(this) { controller }?.requestSiri() == true
+                Log.i(TAG, "Steering voice key source=$source sent=$sent")
+            }
         }
     }
 
@@ -161,6 +257,10 @@ internal object CarPlayMediaKeys {
     private fun releaseLocked() {
         geelyInput?.close()
         geelyInput = null
+        keyLogMonitor?.close()
+        keyLogMonitor = null
+        monitorGeneration++
+        lastSystemTrigger.clear()
         session?.let {
             it.isActive = false
             it.release()
@@ -169,9 +269,17 @@ internal object CarPlayMediaKeys {
         focusRequest?.let { request -> appContext?.getSystemService(AudioManager::class.java)?.abandonAudioFocusRequest(request) }
         focusRequest = null
         focusHeld = false
+        if (learning != null) syncGeelyInputLocked()
     }
 
     private fun send(index: Int, source: String) {
+        val group = if (source in listOf("oneos", "logcat", "broadcast")) source else "media_session"
+        val now = SystemClock.elapsedRealtime()
+        synchronized(this) {
+            if (learning != null || now < suppressedUntil) return
+            if (lastSentButton == index && group != lastSentSource && now - lastSentAt < 120L) return
+            lastSentButton = index; lastSentSource = group; lastSentAt = now
+        }
         // While the car's video player is on screen the wheel drives it: a CarPlay play/pause would
         // make the iPhone end the video session.
         if (CarPlayVideo.onMediaKey(index)) {
@@ -182,17 +290,21 @@ internal object CarPlayMediaKeys {
         Log.i(TAG, "media key $source -> CarPlay $index sent=$sent")
     }
 
-    private val callback = CarPlayMediaCallback(::send)
+    private val callback = CarPlayMediaCallback(::send, ::consumesHardwareKey)
 }
 
 /**
  * Media-session input → CarPlay presses. Hardware keys arrive as button events and keep the toggle;
  * media controllers (not hardware keys) call [onPlay] and [onPause] with an explicit intent.
  */
-internal class CarPlayMediaCallback(private val send: (index: Int, source: String) -> Unit) : MediaSession.Callback() {
+internal class CarPlayMediaCallback(
+    private val send: (index: Int, source: String) -> Unit,
+    private val consumesKey: (Int) -> Boolean = { false },
+) : MediaSession.Callback() {
     override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
         @Suppress("DEPRECATION")
         val event = mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT) ?: return false
+        if (consumesKey(event.keyCode)) return true
         val index = CarPlayMediaButton.forKeyCode(event.keyCode) ?: return super.onMediaButtonEvent(mediaButtonIntent)
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             send(index, KeyEvent.keyCodeToString(event.keyCode))

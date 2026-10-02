@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Independent system-log discovery uses the existing local connection to request access. -->
+    <uses-permission android:name="android.permission.READ_LOGS" tools:ignore="ProtectedPermissions" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
@@ -21,6 +23,11 @@
         </intent>
     </queries>
     <application>
+        <activity android:name="com.shilapi.xcertplay.SteeringControlsActivity"
+            android:exported="false" android:theme="@style/Theme.Xcertplay"
+            android:windowSoftInputMode="adjustResize" />
+        <service android:name="com.shilapi.xcertplay.SteeringProfileUploadService"
+            android:exported="true" android:permission="android.permission.BIND_JOB_SERVICE" />
         <activity android:name="com.shilapi.xcertplay.DiPlayActivity"
             android:exported="true" android:launchMode="singleTop"
             android:configChanges="density|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
