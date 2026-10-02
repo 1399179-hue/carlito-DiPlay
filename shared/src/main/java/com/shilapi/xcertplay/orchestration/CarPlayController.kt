@@ -253,6 +253,7 @@ class CarPlayController(
         override fun onSessionActive(session: AirPlaySession) {
             if (activeSession !== session) {
                 BydNavigationOutputs.start(appContext)
+                com.shilapi.xcertplay.glance.CarPlayGlance.setConnected(true)
                 // The gear may have changed since /info.
                 if (videoListener != null) session.setVideoPlaybackAllowed(VideoInCar.allowed)
             }
@@ -269,6 +270,7 @@ class CarPlayController(
                 activeSession = null
                 BydNavigationOutputs.endNow()
                 clearHudGuidance()
+                com.shilapi.xcertplay.glance.CarPlayGlance.setConnected(false)
                 videoListener?.onVideoSessionEnded()
                 synchronized(playbackStatus) { playbackStatus.clear() }?.let { playing -> playbackListener?.invoke(playing) }
             }
@@ -446,6 +448,7 @@ class CarPlayController(
         }
         videoGate?.close()
         BydNavigationOutputs.endNow()
+        com.shilapi.xcertplay.glance.CarPlayGlance.setConnected(false)
         BydNavigationOutputs.clearClusterStreamControl(::applyClusterUi)
         clearHudGuidance()
         closeReceivers()
@@ -532,6 +535,7 @@ class CarPlayController(
         if (changed) {
             mainHandler.post { hudNavigationListener?.invoke(guidance) }
         }
+        com.shilapi.xcertplay.glance.CarPlayGlance.onFrame(frame)
         synchronized(playbackStatus) { playbackStatus.accept(frame) }?.let { playing -> playbackListener?.invoke(playing) }
     }
 
