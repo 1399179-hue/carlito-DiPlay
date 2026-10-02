@@ -87,7 +87,7 @@
     <string name="about_diplay">About DiPlay</string>
     <string name="active">Active</string>
     <string name="advanced_audio_channel_mapping">Advanced audio channel mapping</string>
-    <string name="airplay_icon">AirPlay icon</string>
+    <string name="airplay_icon">Return-to-home icon</string>
     <string name="allow_carplay_ui_outside_the_safe_area">Allow CarPlay UI outside the safe area</string>
     <string name="allow_nearby_devices_and_on_older_android_versions_locatio">Allow Nearby devices and, on older Android versions, Location before resetting CarPlay Wi-Fi.</string>
     <string name="allow_nearby_devices_for_diplay_in_the_head_unit_s_app_per">Allow Nearby devices for DiPlay in the head unit’s app permissions.</string>
@@ -170,7 +170,8 @@
     <string name="custom_1_1_icon">Custom 1:1 icon</string>
     <string name="debug_logs">Debug logs</string>
     <string name="default_icon">Default icon</string>
-    <string name="default_placeholder_icon">Default placeholder icon</string>
+    <string name="default_placeholder_icon">Default car icon</string>
+    <string name="factory_car_icon">Factory car icon</string>
     <string name="diagnostic_report_saved">Diagnostic report saved</string>
     <string name="diagnostics">Diagnostics</string>
     <string name="diplay">DiPlay</string>
@@ -450,9 +451,9 @@
     <string name="adb_battery_reconnect">If CarPlay connected before the battery was ready, use Apply and reconnect to enable battery reporting.</string>
     <string name="geely_vehicle">Geely vehicle</string>
     <string name="geely_hud_navigation">Navigation on the HUD</string>
-    <string name="geely_hud_navigation_description">Show the next direction, distance and road name on the car’s secondary HUD display while CarPlay is connected. Allow display-over-apps access when asked.</string>
-    <string name="geely_steering_wheel">Steering-wheel controls</string>
-    <string name="geely_steering_wheel_description">Use the media buttons to control CarPlay and the voice button to open Siri.</string>
+    <string name="geely_hud_navigation_description">Show the next turn, distance and road name if the head unit provides a HUD display. Allow display-over-apps access when asked.</string>
+    <string name="geely_steering_wheel">Steering-button compatibility mode</string>
+    <string name="geely_steering_wheel_description">If button identification is unavailable, try this mode to control playback and open Siri.</string>
     <string name="wheel_speed_for_tunnels">Wheel speed for tunnels · needs ADB</string>
     <string name="wheel_speed_for_tunnels_description">With Report location to iPhone on, DiPlay also sends the car\'s wheel speed and gear, so Apple Maps can keep your position moving in tunnels and car parks. Reconnects CarPlay. Needs ADB over network on the head unit.</string>
     <string name="video_while_parked">Video while parked · needs ADB</string>

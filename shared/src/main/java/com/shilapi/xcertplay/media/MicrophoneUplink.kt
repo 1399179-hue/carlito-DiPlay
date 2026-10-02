@@ -22,7 +22,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * The recorder runs only while the matching audio stream is active, so callers start this after
  * the first downlink audio packet and close it on stream teardown.
  */
-internal class MicrophoneUplink(private val config: MicrophoneConfig) : Closeable {
+internal class MicrophoneUplink(
+    private val config: MicrophoneConfig,
+    private val factorySource: Int? = null,
+) : Closeable {
     private val running = AtomicBoolean(false)
     private val firstPacketLogged = AtomicBoolean(false)
     @Volatile private var recorder: AudioRecord? = null
@@ -65,27 +68,26 @@ internal class MicrophoneUplink(private val config: MicrophoneConfig) : Closeabl
             return false
         }
         val bufferSize = maxOf(minBuffer * 2, config.frameBytes * 4)
-        val nextRecorder = try {
-            AudioRecord.Builder()
-                .setAudioSource(source)
-                .setAudioFormat(
-                    AndroidAudioFormat.Builder()
+        val nextRecorder = listOfNotNull(factorySource, source).distinct().firstNotNullOfOrNull { candidate ->
+            var record: AudioRecord? = null
+            try {
+                val built = AudioRecord.Builder().setAudioSource(candidate)
+                    .setAudioFormat(AndroidAudioFormat.Builder()
                         .setEncoding(AndroidAudioFormat.ENCODING_PCM_16BIT)
-                        .setSampleRate(config.sampleRate)
-                        .setChannelMask(channelMask)
-                        .build(),
-                )
-                .setBufferSizeInBytes(bufferSize)
-                .build()
-        } catch (error: Exception) {
-            Log.e(TAG, "microphone recorder creation failed", error)
-            nextEncoder?.close()
-            running.set(false)
-            return false
+                        .setSampleRate(config.sampleRate).setChannelMask(channelMask).build())
+                    .setBufferSizeInBytes(bufferSize).build()
+                record = built
+                if (built.state == AudioRecord.STATE_INITIALIZED) built.startRecording()
+                if (built.recordingState == AudioRecord.RECORDSTATE_RECORDING) built
+                else { built.release(); null }
+            } catch (error: Exception) {
+                runCatching { record?.release() }
+                Log.w(TAG, "microphone source $candidate unavailable", error)
+                null
+            }
         }
-        if (nextRecorder.state != AudioRecord.STATE_INITIALIZED) {
+        if (nextRecorder == null) {
             Log.w(TAG, "microphone recorder failed to initialize")
-            nextRecorder.release()
             nextEncoder?.close()
             running.set(false)
             return false
@@ -108,7 +110,6 @@ internal class MicrophoneUplink(private val config: MicrophoneConfig) : Closeabl
         socket = nextSocket
         opusEncoder = nextEncoder
         return try {
-            nextRecorder.startRecording()
             thread = Thread({ capture(nextRecorder, nextSocket) }, "carplay-mic").apply {
                 isDaemon = true
                 start()

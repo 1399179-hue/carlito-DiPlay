@@ -142,8 +142,8 @@ internal class SteeringKeyLogMonitor(
         private val diagnosticKeyLine = Regex("(?i)key|button|steering|broadcast|input")
         private val raw = Regex("(?i)\\b(?:rawKeyCode|raw)[\"']?[\\s=:]+[\"']?(0x[0-9a-f]+|\\d+)\\b")
         private val key = Regex("(?i)\\b(?:keyCode|key_code|keyId|key_id|keyValue|key_value|key)[\"']?[\\s=:]+[\"']?(0x[0-9a-f]+|\\d+)\\b")
-        private val keyFunction = Regex("(?i)\\bonKey(Down|Up)\\s*[(:=]\\s*(?:keyCode\\s*[=:]\\s*)?(0x[0-9a-f]+|\\d+)\\b")
-        private val functionEvent = Regex("(?i)\\bonKey(Down|Up)\\b")
+        private val keyFunction = Regex("(?i)\\bonKey(Down|Up|Pressed|Released)\\s*[(:=]\\s*(?:keyCode\\s*[=:]\\s*)?(0x[0-9a-f]+|\\d+)\\b")
+        private val functionEvent = Regex("(?i)\\bonKey(Down|Up|Pressed|Released)\\b")
         private val namedKey = Regex("(?i)\\bkeyCode[\"']?[\\s=:]+[\"']?(KEYCODE_[A-Z_0-9]+)")
         private val action = Regex("(?i)\\b(?:keyAction|key_action|action|event)[\"']?[\\s=:]+[\"']?(?:ACTION_)?(DOWN|UP|SINGLE|LONG|DOUBLE|[0-4])\\b")
         private val repeat = Regex("(?i)\\brepeat(?:Count)?[\"']?[\\s=:]+[\"']?(\\d+)")
@@ -173,8 +173,8 @@ internal class SteeringKeyLogMonitor(
             val number = integer(value)
             if (number != null) return number.takeIf { it in 0..4 }
             return when (value?.toString()?.uppercase()?.removePrefix("ACTION_")) {
-                "DOWN" -> 0
-                "UP" -> 1
+                "DOWN", "PRESSED" -> 0
+                "UP", "RELEASED" -> 1
                 "SINGLE" -> 2
                 "LONG" -> 3
                 "DOUBLE" -> 4

@@ -14,6 +14,7 @@ import android.util.Log
 import android.view.KeyEvent
 import com.shilapi.xcertplay.airplay.CarPlayMediaButton
 import com.shilapi.xcertplay.orchestration.CarPlayController
+import com.shilapi.xcertplay.vehicle.GeelyFactoryCarPlay
 
 /**
  * Steering-wheel and other hardware media buttons for CarPlay.
@@ -33,6 +34,7 @@ internal object CarPlayMediaKeys {
     private var session: MediaSession? = null
     private var focusRequest: AudioFocusRequest? = null
     private var focusHeld = false
+    private var manageAudioFocus = true
     private var appContext: Context? = null
     private var geelyInput: GeelySteeringWheelInputChannel? = null
     private var keyLogMonitor: SteeringKeyLogMonitor? = null
@@ -49,12 +51,14 @@ internal object CarPlayMediaKeys {
     private val lastSystemTrigger = mutableMapOf<String, Long>()
 
     @Synchronized
-    fun attach(context: Context, next: CarPlayController) {
+    fun attach(context: Context, next: CarPlayController, manageAudioFocus: Boolean = true,
+        onMediaPlaying: (Boolean) -> Unit = {}) {
         if (controller !== next) releaseLocked()
         appContext = context.applicationContext
         controller = next
+        this.manageAudioFocus = manageAudioFocus
         steeringProfile = SteeringProfiles.loadEnabled(context)
-        next.playbackListener = ::onIphonePlaying
+        next.playbackListener = { playing -> onMediaPlaying(playing); onIphonePlaying(playing) }
         syncGeelyInputLocked()
     }
 
@@ -99,9 +103,13 @@ internal object CarPlayMediaKeys {
         }
         keyLogMonitor?.close(); keyLogMonitor = null
         val generation = ++monitorGeneration
-        val needsSystemInput = learning != null || (controller != null && steeringProfile?.bindings?.isNotEmpty() == true)
+        val inputBindings = steeringProfile?.bindings ?: if (!enabled && appContext?.let(GeelyFactoryCarPlay::load) != null) {
+            // HardKeyModel in the factory APK logs this press even without a connected iPhone.
+            listOf(SteeringBinding("siri", 200231, 0, "logcat", "HardKeyModel"))
+        } else emptyList()
+        val needsSystemInput = learning != null || (controller != null && inputBindings.isNotEmpty())
         if (needsSystemInput && appContext != null) {
-            keyLogMonitor = SteeringKeyLogMonitor(appContext!!, steeringProfile?.bindings.orEmpty(), learning != null) { key ->
+            keyLogMonitor = SteeringKeyLogMonitor(appContext!!, inputBindings, learning != null) { key ->
                 mainHandler.post { if (generation == monitorGeneration) onObservedKey(key) }
             }.also { it.start() }
         }
@@ -185,6 +193,15 @@ internal object CarPlayMediaKeys {
             }
             return
         }
+        if (profile == null && key.source == "logcat" && key.logTag == "HardKeyModel" &&
+            key.keyCode == 200231 && key.event == 0 && appContext?.let(GeelyFactoryCarPlay::load) != null) {
+            val now = SystemClock.elapsedRealtime()
+            val ready = synchronized(this) {
+                val previous = lastSystemTrigger.put("factory_siri", now)
+                previous == null || now - previous >= 180L
+            }
+            if (ready) sendSteeringOperation("siri", "logcat")
+        }
     }
 
     /** Avoid applying the standard action again when this physical key has a custom mapping. */
@@ -244,8 +261,8 @@ internal object CarPlayMediaKeys {
                 if (change == AudioManager.AUDIOFOCUS_LOSS) synchronized(this) { focusHeld = false }
             }, mainHandler)
             .build()
-        val granted = audio?.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        focusRequest = request
+        val granted = manageAudioFocus && audio?.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        focusRequest = request.takeIf { manageAudioFocus }
         focusHeld = granted
         session = MediaSession(context, "DiPlay CarPlay").apply {
             setCallback(callback, mainHandler)

@@ -2,6 +2,12 @@
 
 ## Update — 2026-10-03
 
+- Adapt the CarPlay return-to-home icon for Geely head units, using factory artwork when available and a house icon otherwise.
+- Improve Geely music, navigation, Siri and call audio switching, including Bluetooth music handoff for the active phone.
+- Recognize factory voice-button press/release information and limit transparent HUD guidance to an available HUD display, clearing expired instructions.
+
+G636 / FX11 vehicle compatibility still needs verification with an iPhone. Version remains 0.2.9.
+
 - Add steering button identification in Settings, with assignments for play/pause, next track, previous track and Siri.
 - Fill identified buttons automatically and apply the mapping when saved.
 - Save settings by vehicle and head unit model and upload them to the cloud, resuming uploads when internet access returns.

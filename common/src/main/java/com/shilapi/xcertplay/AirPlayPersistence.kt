@@ -2,6 +2,7 @@ package com.shilapi.xcertplay
 
 import android.content.Context
 import android.os.Build
+import android.util.AtomicFile
 import com.shilapi.xcertplay.airplay.AirPlayDisplaySettings
 import com.shilapi.xcertplay.airplay.AirPlayPhysicalSizeBasis
 import com.shilapi.xcertplay.airplay.CarPlayDisplayScale
@@ -16,6 +17,7 @@ import com.shilapi.xcertplay.orchestration.ManualHotspotSecurity
 import com.shilapi.xcertplay.orchestration.MfiTarget
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 import com.shilapi.xcertplay.transport.LockdownPairRecord
+import com.shilapi.xcertplay.vehicle.GeelyFactoryCarPlay
 import java.io.File
 
 /** SharedPreferences persistence for the accessory identity and paired controllers. */
@@ -155,7 +157,7 @@ object AirPlayPersistence {
 
     fun loadAudioFocusEnabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_AUDIO_FOCUS_ENABLED, false)
+            .getBoolean(KEY_AUDIO_FOCUS_ENABLED, GeelyFactoryCarPlay.load(context) != null)
 
     fun saveAudioFocusEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -359,7 +361,7 @@ object AirPlayPersistence {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_MANUFACTURER, null)
             ?.takeIf { it.isNotBlank() }
-            ?: DEFAULT_MANUFACTURER
+            ?: GeelyFactoryCarPlay.load(context)?.manufacturer ?: DEFAULT_MANUFACTURER
 
     fun saveManufacturer(context: Context, manufacturer: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -371,7 +373,7 @@ object AirPlayPersistence {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_MODEL, null)
             ?.takeIf { it.isNotBlank() }
-            ?: DEFAULT_MODEL
+            ?: GeelyFactoryCarPlay.load(context)?.model ?: DEFAULT_MODEL
 
     fun saveModel(context: Context, model: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -379,11 +381,13 @@ object AirPlayPersistence {
             .apply()
     }
 
-    fun loadOemLabel(context: Context): String =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_OEM_LABEL, DEFAULT_OEM_LABEL)
-            // iOS hides the car icon without a label.
-            .orEmpty().ifBlank { DEFAULT_OEM_LABEL }
+    fun loadOemLabel(context: Context): String {
+        val stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_OEM_LABEL, null)
+        val factory = GeelyFactoryCarPlay.load(context)
+        // Older installs saved BYD automatically even on Geely; preserve other custom labels.
+        if (factory != null && (stored.isNullOrBlank() || stored == DEFAULT_OEM_LABEL)) return factory.iconLabel
+        return stored.orEmpty().ifBlank { DEFAULT_OEM_LABEL }
+    }
 
     fun saveOemLabel(context: Context, oemLabel: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -627,18 +631,27 @@ object AirPlayPersistence {
         if (commit) editor.commit() else editor.apply()
     }
 
-    fun loadCustomAirPlayIconFile(context: Context): File? =
-        File(context.filesDir, CUSTOM_ICON_FILE).takeIf { it.isFile }
+    fun loadCustomAirPlayIconFile(context: Context): File? {
+        val file = File(context.filesDir, CUSTOM_ICON_FILE)
+        runCatching { AtomicFile(file).openRead().use { } }
+        return file.takeIf { it.isFile }
+    }
 
     fun saveCustomAirPlayIcon(context: Context, encodedImage: ByteArray) {
         require(encodedImage.isNotEmpty()) { "AirPlay icon data must not be empty" }
-        File(context.filesDir, CUSTOM_ICON_FILE).outputStream().use { output ->
+        val file = AtomicFile(File(context.filesDir, CUSTOM_ICON_FILE))
+        val output = file.startWrite()
+        try {
             output.write(encodedImage)
+            file.finishWrite(output)
+        } catch (error: Exception) {
+            file.failWrite(output)
+            throw error
         }
     }
 
     fun clearCustomAirPlayIcon(context: Context) {
-        File(context.filesDir, CUSTOM_ICON_FILE).delete()
+        AtomicFile(File(context.filesDir, CUSTOM_ICON_FILE)).delete()
     }
 
     fun loadIdentity(context: Context): AirPlayIdentity {

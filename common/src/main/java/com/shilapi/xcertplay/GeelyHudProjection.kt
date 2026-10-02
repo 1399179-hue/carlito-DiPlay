@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.hardware.display.DisplayManager
@@ -35,6 +36,10 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
     private var hudView: GeelyHudGuidanceView? = null
     private var attachedDisplayId = Display.INVALID_DISPLAY
     private var guidance: CarPlayHudGuidance? = null
+    private val expireGuidance = Runnable {
+        guidance = null
+        detachWindow()
+    }
 
     fun attach(activity: Activity) {
         mainHandler.post {
@@ -61,7 +66,9 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
 
     fun update(value: CarPlayHudGuidance?) {
         mainHandler.post {
+            mainHandler.removeCallbacks(expireGuidance)
             guidance = value
+            if (value != null) mainHandler.postDelayed(expireGuidance, 30_000L)
             refresh()
         }
     }
@@ -105,10 +112,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
                     !it.name.contains("com.byd.containerservice", ignoreCase = true) &&
                     !it.name.contains("ClusterProjectionDisplay", ignoreCase = true)
             }
-            ?.let { displays ->
-                displays.firstOrNull { it.name.contains("hud", ignoreCase = true) }
-                    ?: displays.firstOrNull()
-            }
+            ?.firstOrNull { it.name.contains("hud", ignoreCase = true) }
         if (display == null) {
             detachWindow()
             return
@@ -170,30 +174,16 @@ private class GeelyHudGuidanceView(context: Context) : View(context) {
         color = Color.WHITE
         typeface = Typeface.create("sans-serif", Typeface.NORMAL)
     }
+    private val arrow = Path()
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        canvas.drawColor(Color.BLACK)
         val route = guidance ?: return
         val heightScale = min(height.toFloat(), width * 0.45f)
         val centerY = height * 0.5f
         val iconSize = heightScale * 0.47f
         val left = width * 0.22f
-        accent.textSize = iconSize
-        val symbol = when (route.maneuverCode) {
-            1 -> "←"
-            2 -> "→"
-            3 -> "↖"
-            5 -> "↗"
-            7 -> "↶"
-            8 -> "↷"
-            11 -> "↑"
-            else -> ""
-        }
-        if (symbol.isNotEmpty()) {
-            val metrics = accent.fontMetrics
-            canvas.drawText(symbol, left - accent.measureText(symbol) / 2f, centerY - (metrics.ascent + metrics.descent) / 2f, accent)
-        }
+        drawArrow(canvas, route.maneuverCode, left, centerY, iconSize)
 
         val distance = if (route.distanceMeters >= 1_000) {
             String.format(Locale.getDefault(), "%.1f km", route.distanceMeters / 1_000f)
@@ -209,5 +199,41 @@ private class GeelyHudGuidanceView(context: Context) : View(context) {
             val road = TextUtils.ellipsize(route.road, android.text.TextPaint(roadPaint), maxWidth, TextUtils.TruncateAt.END)
             canvas.drawText(road.toString(), textLeft, centerY + accent.textSize * 0.75f, roadPaint)
         }
+    }
+
+    private fun drawArrow(canvas: Canvas, maneuver: Int, x: Float, y: Float, size: Float) {
+        arrow.reset()
+        when (maneuver) {
+            1, 2 -> {
+                arrow.moveTo(18f, 36f); arrow.lineTo(18f, 0f)
+                arrow.quadTo(18f, -20f, -2f, -20f); arrow.lineTo(-38f, -20f)
+                arrow.moveTo(-22f, -34f); arrow.lineTo(-38f, -20f); arrow.lineTo(-22f, -6f)
+            }
+            3, 5 -> {
+                arrow.moveTo(18f, 36f); arrow.lineTo(18f, 0f); arrow.lineTo(-28f, -36f)
+                arrow.moveTo(-30f, -16f); arrow.lineTo(-28f, -36f); arrow.lineTo(-8f, -36f)
+            }
+            7, 8 -> {
+                arrow.moveTo(22f, 36f); arrow.lineTo(22f, -8f)
+                arrow.cubicTo(22f, -48f, -22f, -48f, -22f, -8f); arrow.lineTo(-22f, 16f)
+                arrow.moveTo(-36f, 0f); arrow.lineTo(-22f, 16f); arrow.lineTo(-8f, 0f)
+            }
+            11 -> {
+                arrow.moveTo(0f, 36f); arrow.lineTo(0f, -38f)
+                arrow.moveTo(-14f, -22f); arrow.lineTo(0f, -38f); arrow.lineTo(14f, -22f)
+            }
+            else -> return
+        }
+        val checkpoint = canvas.save()
+        canvas.translate(x, y)
+        val scale = size / 88f
+        canvas.scale(if (maneuver in listOf(2, 5, 8)) -scale else scale, scale)
+        accent.style = Paint.Style.STROKE
+        accent.strokeWidth = 9f
+        accent.strokeCap = Paint.Cap.ROUND
+        accent.strokeJoin = Paint.Join.ROUND
+        canvas.drawPath(arrow, accent)
+        accent.style = Paint.Style.FILL
+        canvas.restoreToCount(checkpoint)
     }
 }

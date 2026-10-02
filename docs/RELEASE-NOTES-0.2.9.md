@@ -4,6 +4,8 @@ Public preview for compatible BYD Android head units. This release includes the 
 
 ## Steering button update — 3 October 2026
 
+The Geely G636 / FX11 adaptation adds factory return-to-home artwork where readable, improved audio and Bluetooth music handoff, factory voice-key log recognition, and a transparent HUD overlay limited to an available HUD display. Vehicle behavior still needs verification with an iPhone. See [factory adaptation evidence and limits](GEELY-FACTORY-CARPLAY.md).
+
 - Identify steering buttons in Settings and assign play/pause, next track, previous track or Siri.
 - Fill mappings automatically and apply them when saved.
 - Save configurations by vehicle and head unit model and upload them to the cloud, with retry when internet access returns.

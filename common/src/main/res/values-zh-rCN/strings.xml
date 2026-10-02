@@ -79,7 +79,7 @@
     <string name="about_diplay">关于 DiPlay</string>
     <string name="active">已启用</string>
     <string name="advanced_audio_channel_mapping">高级音频通道映射</string>
-    <string name="airplay_icon">AirPlay 图标</string>
+    <string name="airplay_icon">返回桌面图标</string>
     <string name="allow_carplay_ui_outside_the_safe_area">允许 CarPlay 界面超出安全区域</string>
     <string name="allow_nearby_devices_and_on_older_android_versions_locatio">重置 CarPlay Wi-Fi 前，请授予“附近的设备”权限；较旧的 Android 版本还需要位置权限。</string>
     <string name="allow_nearby_devices_for_diplay_in_the_head_unit_s_app_per">请在车机应用权限中允许 DiPlay 访问附近的设备。</string>
@@ -164,7 +164,8 @@
     <string name="custom_1_1_icon">自定义 1:1 图标</string>
     <string name="debug_logs">调试日志</string>
     <string name="default_icon">默认图标</string>
-    <string name="default_placeholder_icon">默认占位图标</string>
+    <string name="default_placeholder_icon">默认桌面图标</string>
+    <string name="factory_car_icon">原厂桌面图标</string>
     <string name="diagnostic_report_saved">诊断报告已保存</string>
     <string name="diagnostics">诊断</string>
     <string name="diplay">DiPlay</string>
@@ -449,9 +450,9 @@
     <string name="adb_battery_reconnect">如果 CarPlay 在电池数据就绪前已连接，请使用“应用并重新连接”以启用电池数据上报。</string>
     <string name="geely_vehicle">吉利车机</string>
     <string name="geely_hud_navigation">HUD 导航提示</string>
-    <string name="geely_hud_navigation_description">连接 CarPlay 时，在副屏显示下一步方向、距离和道路名称。首次使用时请允许显示在其他应用上层。</string>
-    <string name="geely_steering_wheel">方向盘按键</string>
-    <string name="geely_steering_wheel_description">使用方向盘媒体按键控制 CarPlay，并用语音键打开 Siri。</string>
+    <string name="geely_hud_navigation_description">车机提供 HUD 显示屏时，显示下一步方向、距离和道路名称。首次使用时请允许显示在其他应用上层。</string>
+    <string name="geely_steering_wheel">按键兼容模式</string>
+    <string name="geely_steering_wheel_description">按键识别无法使用时，可尝试此模式来控制播放和打开 Siri。</string>
     <string name="wheel_speed_for_tunnels">隧道中的车轮速度 · 需要 ADB</string>
     <string name="wheel_speed_for_tunnels_description">开启“向 iPhone 报告位置”后，DiPlay 还会发送车轮速度和挡位，让 Apple 地图在隧道和停车场里也能继续推算你的位置。会重新连接 CarPlay。需要在车机上开启网络 ADB。</string>
     <string name="video_while_parked">驻车时播放视频 · 需要 ADB</string>
