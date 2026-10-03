@@ -1,6 +1,6 @@
 # Geely G636 / FX11 / KX11 factory CarPlay adaptation
 
-This adaptation targets the Geely factory CarPlay implementation supplied for G636, FX11 and KX11 head units. It follows the upstream application version, currently **0.2.10 / code 29**. A Xingyue L KX11 user report confirms the Android identity and exposes the Bluetooth handoff and full-screen failures; the Bluetooth handoff fix is driven by the iPhone request and also applies to other affected head units. The resulting changes still need an installed vehicle retest.
+This adaptation targets the Geely factory CarPlay implementation supplied for G636, FX11 and KX11 head units. It follows the upstream application version, currently **0.2.11 / code 30**. A Xingyue L KX11 user report confirms the Android identity and exposes the Bluetooth handoff and full-screen failures; the Bluetooth handoff fix is driven by the iPhone request and also applies to other affected head units. The resulting changes still need an installed vehicle retest.
 
 ## Reference evidence
 
@@ -23,7 +23,7 @@ The supplied `com.autolink.carplay.apk` provides the receiver service; `com.auto
 - A user-selected image and other custom icon labels remain supported. The previous automatic BYD label is replaced with the Geely label on a detected Geely head unit.
 - Audio focus is enabled by default on detected Geely units. An explicitly saved audio-focus setting and manual stream selections remain effective. Other units retain their existing artwork and default settings.
 - When no explicit navigation channel has been saved, detected Geely units use factory navigation channel 14 instead of automatic media routing. An explicit user selection, including automatic routing, remains authoritative.
-- The 0.2.10 merge retains upstream telephone communication mode, available platform echo cancellation and noise suppression, and microphone diagnostics. Each microphone-source attempt owns its effects; rejected attempts release them before trying the Android fallback. Call teardown restores the previous audio mode.
+- The 0.2.11 merge retains upstream telephone communication mode, available platform echo cancellation and noise suppression, and microphone diagnostics. Each microphone-source attempt owns its effects; rejected attempts release them before trying the Android fallback. Call teardown restores the previous audio mode.
 - Runtime reflection and restricted Bluetooth methods can be unavailable to an ordinary installed app. Rejected operations are recorded in technical diagnostics and fall back without disabling Bluetooth or changing system application settings.
 - The factory receiver service and DiPlay must not own the same wired phone session simultaneously. This change does not disable, stop or replace the factory service.
 - A disconnected A2DP-sink link is not forcibly reconnected at teardown; the head unit resumes its normal Bluetooth policy after the guard closes.

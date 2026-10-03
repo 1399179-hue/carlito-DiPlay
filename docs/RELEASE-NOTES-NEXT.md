@@ -1,3 +1,3 @@
 # DiPlay next release notes
 
-The Geely factory adaptation and steering button updates now follow upstream version 0.2.10 / code 29. See [the update notes](UPDATE-NOTES-0.2.10.md). Add future unreleased changes here.
+Changes through merged PR #175 are documented in [DiPlay 0.2.11](RELEASE-NOTES-0.2.11.md). The Geely adaptation, selectable HUD projection and steering-button updates are recorded in the [fork update notes](UPDATE-NOTES-0.2.11.md). Final release checks are tracked in [VALIDATION.md](VALIDATION.md). Add future unreleased changes here.

@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Independent system-log discovery uses the existing local connection to request access. -->
     <uses-permission android:name="android.permission.READ_LOGS" tools:ignore="ProtectedPermissions" />
+    <!-- Optional, user-authorized startup of the car's own hotspot. -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
@@ -20,6 +22,7 @@
         <package android:name="com.autolink.carplay" />
         <package android:name="com.autolink.carplay.app" />
         <package android:name="com.geely.service.oneosapi" />
+        <package android:name="com.byd.carsettings" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
