@@ -532,4 +532,18 @@
     <string name="steering_log_tag">Log source (Tag)</string>
     <string name="steering_log_parts">Enter stable button log fragments. Separate fragments with &amp;&amp;; all must appear for one trigger. Omit changing timestamps and process identifiers.</string>
     <string name="steering_log_match_invalid">Enter a log source and 1 to 4 fragments of up to 160 characters each.</string>
+    <string name="return_home_icon">CarPlay home icon</string>
+    <string name="return_home_icon_description">Choose a square image for CarPlay’s button that returns to the car home screen. The new icon is used on the next connection.</string>
+    <string name="describe_the_problem">Describe the problem, when it happened, and what you expected</string>
+    <string name="upload_report_to_cloud">Upload report to cloud</string>
+    <string name="uploading_to_cloud">Uploading to cloud…</string>
+    <string name="describe_problem_before_uploading">Describe the problem before uploading.</string>
+    <string name="problem_description_too_long">Keep the problem description under 2,000 characters.</string>
+    <string name="report_upload_privacy">Uploads only when you tap the button. The problem description and redacted diagnostic report are sent together.</string>
+    <string name="report_uploaded">Report uploaded</string>
+    <string name="report_uploaded_message">The cloud received your problem description and diagnostic report.</string>
+    <string name="report_upload_failed">Could not upload the report</string>
+    <string name="report_upload_failed_message">Check the head unit’s internet connection and try again.</string>
+    <string name="retry_report_upload">Try again</string>
+    <string name="report_too_large_message">This report is larger than 1 MiB. Save it locally and share it manually.</string>
 </resources>

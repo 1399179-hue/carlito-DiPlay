@@ -1,6 +1,8 @@
 # Privacy and diagnostics
 
-DiPlay's product flow uses local authentication and a direct USB/Wi-Fi connection to the iPhone. No account, remote authentication service or automatic diagnostic upload is used. The iPhone's CarPlay apps have their own internet and privacy behavior.
+DiPlay's product flow uses local authentication and a direct USB/Wi-Fi connection to the iPhone. No account or remote authentication service is used. The iPhone's CarPlay apps have their own internet and privacy behavior.
+
+Diagnostic reports are not uploaded automatically. In Settings, the user may enter a problem description and explicitly upload one redacted diagnostic report to the private project cloud. The upload contains that description, head-unit and connection information, and the same redacted session logs available through Save diagnostic report. It excludes protocol payloads, credentials and accessory identities.
 
 The head unit stores app preferences, paired-device selections, pairing data and bounded diagnostic logs in app storage. Authentication and pairing material are kept out of Android backup. Uninstalling removes app-private data; exported reports in Downloads remain until you delete them.
 

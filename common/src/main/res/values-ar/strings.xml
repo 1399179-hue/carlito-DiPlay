@@ -467,4 +467,18 @@
     <string name="center_map_no_permission_screen">لا توجد في وحدة القيادة شاشة إعدادات لهذا الإذن. اسمح به عبر ADB.</string>
     <string name="launcher_map_sharing">مشاركة الخريطة المباشرة مع المشغّلات الأخرى</string>
     <string name="launcher_map_sharing_description">يمكن للمشغّلات التي تدعم DiPlay عرض خريطة لوحة العدادات المباشرة داخل شاشتها الرئيسية. معطّل افتراضيًا، لأن أي تطبيق على وحدة القيادة يمكنه عندها طلب الخريطة. راجع docs/LAUNCHER_INTEGRATION.md.</string>
+    <string name="return_home_icon">أيقونة العودة إلى شاشة السيارة</string>
+    <string name="return_home_icon_description">اختر صورة مربعة لزر CarPlay الذي يعيدك إلى شاشة السيارة. ستظهر الأيقونة الجديدة عند الاتصال التالي.</string>
+    <string name="describe_the_problem">صِف المشكلة ووقت حدوثها والنتيجة المتوقعة</string>
+    <string name="upload_report_to_cloud">رفع التقرير إلى السحابة</string>
+    <string name="uploading_to_cloud">جارٍ الرفع إلى السحابة…</string>
+    <string name="describe_problem_before_uploading">صِف المشكلة قبل الرفع.</string>
+    <string name="problem_description_too_long">يجب ألا يتجاوز الوصف 2000 حرف.</string>
+    <string name="report_upload_privacy">لا يتم الرفع إلا بعد الضغط على الزر. يُرسل الوصف وتقرير التشخيص المنقح معًا.</string>
+    <string name="report_uploaded">تم رفع التقرير</string>
+    <string name="report_uploaded_message">استلمت السحابة وصف المشكلة وتقرير التشخيص.</string>
+    <string name="report_upload_failed">تعذر رفع التقرير</string>
+    <string name="report_upload_failed_message">تحقق من اتصال شاشة السيارة بالإنترنت ثم حاول مجددًا.</string>
+    <string name="retry_report_upload">إعادة المحاولة</string>
+    <string name="report_too_large_message">حجم التقرير أكبر من 1 MiB. احفظه محليًا وشاركه يدويًا.</string>
 </resources>

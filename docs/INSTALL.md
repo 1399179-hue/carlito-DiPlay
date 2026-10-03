@@ -25,7 +25,7 @@ Start with 30 fps, Efficient video (HEVC) off and Default icon/text size. Try 80
 
 If reinstalling left an old group, close other projection apps, then use **Settings → Wireless connection help → Reset CarPlay Wi-Fi**. DiPlay asks before removing an unrecognized Wi-Fi Direct group. Updating in place is preferable to uninstalling.
 
-Use **Settings → Diagnostics → Save diagnostic report** after reproducing a problem. Android 10+ saves to **Downloads/DiPlay**; Android 9 uses a document picker. Review the file, then attach it to a GitHub issue with car model, DiLink/Android versions, iPhone/iOS, transport and reproduction steps. Nothing is uploaded automatically.
+Use **Settings → Diagnostics → Save diagnostic report** after reproducing a problem. Android 10+ saves to **Downloads/DiPlay**; Android 9 uses a document picker. You can also describe the problem and choose **Upload report to cloud**. The report is uploaded only after that button is pressed. Saved reports can still be reviewed and attached to a GitHub issue manually.
 
 APK installation restrictions are controlled by your car's firmware. ADB is optional if your car supports it, not an app runtime requirement:
 

@@ -1,5 +1,7 @@
 # DiPlay 0.2.10 — 2026-10-03
 
+- Add a main-settings editor for the CarPlay return-to-home icon and an explicit diagnostic-report upload with a required user problem description.
+- Route Geely factory guidance through navigation channel 14 by default when the user has not chosen another channel.
 - Release the active phone's factory Bluetooth music channel on any head unit when wireless CarPlay requests its handoff, recognize Geely KX11 units for their factory integration, and reinforce immersive full-screen recovery on Android 11 vendor firmware.
 - Merge upstream 0.2.10 / code 29 while retaining Geely factory artwork, audio and Bluetooth handling, HUD display limits and independently learned steering controls. See [fork update notes](docs/UPDATE-NOTES-0.2.10.md).
 - Publish CarPlay song metadata, position and artwork to Android media sessions; bound artwork queues and reject stale work across sessions (#82).

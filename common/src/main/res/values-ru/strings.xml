@@ -467,4 +467,18 @@
     <string name="center_map_no_permission_screen">На этом головном устройстве нет экрана настроек для этого разрешения. Разрешите его через ADB.</string>
     <string name="launcher_map_sharing">Делиться живой картой с другими лаунчерами</string>
     <string name="launcher_map_sharing_description">Лаунчеры с поддержкой DiPlay смогут показывать живую карту приборной панели на своём главном экране. Выключено по умолчанию, потому что тогда карту сможет запросить любое приложение на головном устройстве. Подробнее: docs/LAUNCHER_INTEGRATION.md.</string>
+    <string name="return_home_icon">Значок возврата на главный экран автомобиля</string>
+    <string name="return_home_icon_description">Выберите квадратное изображение для кнопки CarPlay, возвращающей на главный экран автомобиля. Новый значок появится при следующем подключении.</string>
+    <string name="describe_the_problem">Опишите проблему, время её появления и ожидаемый результат</string>
+    <string name="upload_report_to_cloud">Отправить отчёт в облако</string>
+    <string name="uploading_to_cloud">Отправка в облако…</string>
+    <string name="describe_problem_before_uploading">Перед отправкой опишите проблему.</string>
+    <string name="problem_description_too_long">Описание не должно превышать 2000 символов.</string>
+    <string name="report_upload_privacy">Отправка выполняется только после нажатия кнопки. Описание и обезличенный диагностический отчёт отправляются вместе.</string>
+    <string name="report_uploaded">Отчёт отправлен</string>
+    <string name="report_uploaded_message">Облако получило описание проблемы и диагностический отчёт.</string>
+    <string name="report_upload_failed">Не удалось отправить отчёт</string>
+    <string name="report_upload_failed_message">Проверьте подключение устройства к Интернету и повторите попытку.</string>
+    <string name="retry_report_upload">Повторить</string>
+    <string name="report_too_large_message">Размер отчёта превышает 1 МиБ. Сохраните его на устройстве и отправьте вручную.</string>
 </resources>

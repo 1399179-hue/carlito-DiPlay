@@ -14,7 +14,7 @@ UNIT = Path("/etc/systemd/system/diplay-profiles.service")
 MARKER = "# DIPLAY_STEERING_PROFILES"
 LOCATION = """    # DIPLAY_STEERING_PROFILES
     location /diplay-profiles/ {
-        client_max_body_size 32k;
+        client_max_body_size 1m;
         proxy_pass http://127.0.0.1:18794;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -32,6 +32,7 @@ User=linecode
 Group=users
 WorkingDirectory=/volume1/homes/linecode/codex-cache/diplay-profiles
 Environment=DIPLAY_PROFILES_DATA=/volume1/homes/linecode/codex-cache/diplay-profiles/data/profiles
+Environment=DIPLAY_REPORTS_DATA=/volume1/homes/linecode/codex-cache/diplay-profiles/data/reports
 Environment=DIPLAY_PROFILES_PORT=18794
 ExecStart=/usr/bin/python3 /volume1/homes/linecode/codex-cache/diplay-profiles/server.py
 Restart=on-failure
@@ -49,7 +50,7 @@ def main():
     if os.geteuid() != 0 or not (APP / "server.py").is_file():
         raise SystemExit("Upload the server and run this installer as administrator")
     owner = pwd.getpwnam("linecode")
-    for directory in (APP, APP / "data", APP / "data" / "profiles"):
+    for directory in (APP, APP / "data", APP / "data" / "profiles", APP / "data" / "reports"):
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chown(directory, owner.pw_uid, owner.pw_gid)
         directory.chmod(0o700)
@@ -76,6 +77,17 @@ def main():
         backup = backups / (NGINX.name + ".diplay-profiles." + stamp)
         shutil.copy2(NGINX, backup)
         NGINX.write_text(original[:target] + LOCATION + original[target:], encoding="utf-8")
+    else:
+        marker = original.index(MARKER)
+        suffix = original[marker:]
+        updated = re.sub(r"client_max_body_size\s+[^;]+;", "client_max_body_size 1m;", suffix, count=1)
+        if updated != suffix:
+            backups = APP.parent / "nginx-backups"
+            backups.mkdir(exist_ok=True)
+            stamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+            backup = backups / (NGINX.name + ".diplay-profiles." + stamp)
+            shutil.copy2(NGINX, backup)
+            NGINX.write_text(original[:marker] + updated, encoding="utf-8")
     try:
         subprocess.run(["/usr/bin/nginx", "-t"], check=True)
         subprocess.run(["/usr/bin/systemctl", "daemon-reload"], check=True)

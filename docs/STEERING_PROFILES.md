@@ -61,4 +61,6 @@ No real vehicle profile is shipped without actual observed keys. Saved configura
 
 The deployed receiver runs as the separate `diplay-profiles.service` from `/volume1/homes/linecode/codex-cache/diplay-profiles/`. Its `/diplay-profiles/` nginx location is in the existing `/usr/local/etc/nginx/sites-enabled/geely-auth-standalone-5214.conf` and proxies to the receiver on `127.0.0.1:18794`.
 
+The same private intake accepts explicit diagnostic submissions at `POST /diplay-profiles/v1/reports`. Each request contains a required user problem description and the redacted report produced by the app. Reports are limited to 1 MiB and stored privately by date and receipt under `data/reports`; the endpoint never serves them back to clients.
+
 To install or update this receiver, deploy `server/steering_profiles/server.py` and `install.py` to that directory and run the installer as administrator. It installs `diplay-profiles.service`, backs up nginx before adding the dedicated HTTPS route, and restores nginx if installation fails.

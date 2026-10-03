@@ -11,6 +11,9 @@
 
 ## 吉利适配与方向盘按键
 
+- 设置中可选择并裁剪 CarPlay 返回车机桌面的图标，也可随时恢复默认图标。
+- 诊断页面新增故障描述和一键上传云端，只有用户主动点击后才会投送报告；单份报告上限为 1 MiB。
+- 修复吉利原厂环境中导航声音未使用独立导航通道的问题；已手动选择的通道保持不变。
 - 修复部分车型无线 CarPlay 与原车蓝牙音乐争抢播放通道的问题。
 - 改善部分 Android 11 车机隐藏系统栏后的全屏恢复，减少画面底部被系统栏占用。
 - 媒体方控随当前 CarPlay 音源接管，减少按键被原车蓝牙播放器截获。
@@ -31,6 +34,9 @@
 
 ## Geely adaptation and steering controls
 
+- Choose and crop the CarPlay return-to-home icon in Settings, or restore the default.
+- Add an issue-description field and one-tap diagnostic upload; reports are sent only after the user taps upload and are limited to 1 MiB each.
+- Route guidance through the separate factory navigation channel on Geely head units while preserving a channel selected by the user.
 - Fix factory Bluetooth music competing with wireless CarPlay for audio on affected head units.
 - Improve full-screen recovery after hiding the system bars on affected Android 11 head units.
 - Keep media steering controls with the active CarPlay source instead of the factory Bluetooth player.

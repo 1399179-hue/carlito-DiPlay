@@ -179,8 +179,17 @@ object AirPlayPersistence {
 
     fun loadNavigationAudioChannel(context: Context): Int {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        // Inherit the legacy value only when the new key is absent; preserve fresh-install and explicit 0 defaults.
-        return prefs.getInt(KEY_NAVIGATION_AUDIO_CHANNEL, prefs.getInt(KEY_NAVIGATION_STREAM_TYPE, 0))
+        val factoryDefault = if (GeelyFactoryCarPlay.load(context) != null) {
+            loadNavigationStreamType(context)
+        } else {
+            0
+        }
+        // Inherit the legacy value only when the new key is absent. Factory Geely units default
+        // to their navigation stream; an explicitly saved 0 still keeps automatic usage routing.
+        return prefs.getInt(
+            KEY_NAVIGATION_AUDIO_CHANNEL,
+            prefs.getInt(KEY_NAVIGATION_STREAM_TYPE, factoryDefault),
+        )
             .takeIf { it in AUDIO_CHANNELS } ?: 0
     }
 

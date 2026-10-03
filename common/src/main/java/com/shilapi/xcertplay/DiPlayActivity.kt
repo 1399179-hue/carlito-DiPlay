@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.content.res.Configuration
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -60,10 +61,14 @@ class DiPlayActivity : ComponentActivity() {
     private var initialLaunch = true
     private var notificationTransport = true
     private var exportInProgress = false
+    private var reportUploadInProgress = false
+    private var reportIssueDescription = ""
     private var navigationStreamType = 14
     private var testToneTrack: AudioTrack? = null
     private var toneStop: Runnable? = null
     private var exportButton: Button? = null
+    private var reportUploadButton: Button? = null
+    private var reportIssueInput: EditText? = null
     private var adbStatus: TextView? = null
     private var adbCheckGeneration = 0
     private var developerVersionTaps = 0
@@ -84,6 +89,18 @@ class DiPlayActivity : ComponentActivity() {
     }
     private val export = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         if (uri != null) exportDiagnostics(uri)
+    }
+    private val iconImageCrop = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) render()
+    }
+    private val iconImagePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            iconImageCrop.launch(
+                Intent(this, ImageCropActivity::class.java)
+                    .setData(uri)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+            )
+        }
     }
 
     private var languagePreferenceAtCreate = AppLocale.SYSTEM
@@ -108,6 +125,7 @@ class DiPlayActivity : ComponentActivity() {
             getString(R.string.setup_error_auth)
         }
         pendingCarHotspotSetup = savedInstanceState?.getBoolean("pending_car_hotspot") ?: false
+        reportIssueDescription = savedInstanceState?.getString("report_issue_description").orEmpty()
         page = savedInstanceState?.getString("page") ?: intent.getStringExtra("page") ?: "home"
         render()
         handleWirelessRecovery()
@@ -124,7 +142,13 @@ class DiPlayActivity : ComponentActivity() {
         page = intent.getStringExtra("page") ?: "home"; render()
         handleWirelessRecovery()
     }
-    override fun onSaveInstanceState(outState: Bundle) { outState.putString("page", page); outState.putBoolean("pending_car_hotspot", pendingCarHotspotSetup); super.onSaveInstanceState(outState) }
+    override fun onSaveInstanceState(outState: Bundle) {
+        reportIssueDescription = reportIssueInput?.text?.toString() ?: reportIssueDescription
+        outState.putString("page", page)
+        outState.putBoolean("pending_car_hotspot", pendingCarHotspotSetup)
+        outState.putString("report_issue_description", reportIssueDescription)
+        super.onSaveInstanceState(outState)
+    }
     override fun onConfigurationChanged(newConfig: Configuration) { super.onConfigurationChanged(newConfig); render() }
     private fun openOverlayPermission() {
         val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
@@ -163,7 +187,9 @@ class DiPlayActivity : ComponentActivity() {
     override fun onPause() { handler.removeCallbacks(tick); super.onPause() }
 
     private fun render() {
+        reportIssueDescription = reportIssueInput?.text?.toString() ?: reportIssueDescription
         status = null; connectButton = null; disconnectButton = null; lastRunning = null
+        reportUploadButton = null; reportIssueInput = null
         val scroll = ScrollView(this).apply { setBackgroundColor(BG); isFillViewport = true; clipToPadding = true }
         ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
             val safeInsets = insets.getInsets(
@@ -282,6 +308,33 @@ class DiPlayActivity : ComponentActivity() {
             card.addView(button(getString(R.string.choose_save_location), false) { chooseReportDestination() }, matchButton(10, 60))
             val destination = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) getString(R.string.reports_save_to_downloads_diplay) else getString(R.string.choose_where_to_save_your_report)
             card.addView(label(destination + getString(R.string.nothing_is_sent_automatically_protocol_payloads_and_creden), 14, MUTED).apply { setPadding(0, dp(12), 0, 0) })
+            reportIssueInput = EditText(this).apply {
+                hint = getString(R.string.describe_the_problem)
+                setText(reportIssueDescription)
+                setTextColor(TEXT)
+                setHintTextColor(MUTED)
+                minLines = 3
+                maxLines = 6
+                setPadding(dp(16), dp(12), dp(16), dp(12))
+                backgroundTintList = ColorStateList.valueOf(ACCENT)
+            }
+            card.addView(reportIssueInput, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
+            reportUploadButton = button(
+                if (reportUploadInProgress) getString(R.string.uploading_to_cloud) else getString(R.string.upload_report_to_cloud),
+                true,
+            ) {
+                val description = reportIssueInput?.text?.toString()?.trim().orEmpty()
+                if (description.isEmpty()) {
+                    toast(getString(R.string.describe_problem_before_uploading))
+                } else if (description.length > DiagnosticReportUpload.MAX_DESCRIPTION_LENGTH) {
+                    toast(getString(R.string.problem_description_too_long))
+                } else {
+                    reportIssueDescription = description
+                    uploadDiagnostics(description)
+                }
+            }.apply { isEnabled = !reportUploadInProgress }
+            card.addView(reportUploadButton, matchButton(12, 60))
+            card.addView(label(getString(R.string.report_upload_privacy), 14, MUTED).apply { setPadding(0, dp(12), 0, 0) })
         }
         section(content, getString(R.string.automatic_connection), R.drawable.ic_dp_automation) { card ->
             toggle(card, getString(R.string.connect_when_diplay_opens), getString(R.string.use_your_last_connection_type_and_selected_iphone), DiPlayPreferences.autoConnect(this)) { DiPlayPreferences.saveAutoConnect(this, it) }
@@ -302,6 +355,31 @@ class DiPlayActivity : ComponentActivity() {
             toggle(card, getString(R.string.full_screen), getString(R.string.hide_the_car_s_system_bars_while_carplay_is_open), AirPlayPersistence.loadHideTopBar(this) && AirPlayPersistence.loadHideBottomBar(this)) {
                 AirPlayPersistence.saveHideTopBar(this, it); AirPlayPersistence.saveHideBottomBar(this, it)
             }
+        }
+        section(content, getString(R.string.return_home_icon), R.drawable.ic_carplay) { card ->
+            val preview = ImageView(this).apply {
+                contentDescription = getString(R.string.return_home_icon)
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(10).toFloat()
+                    setColor(SURFACE)
+                }
+                val custom = runCatching {
+                    AirPlayPersistence.loadCustomAirPlayIconFile(this@DiPlayActivity)?.readBytes()
+                }.getOrNull()
+                if (custom != null) {
+                    setImageBitmap(BitmapFactory.decodeByteArray(custom, 0, custom.size))
+                } else {
+                    setImageResource(R.drawable.ic_car_home_fallback)
+                }
+            }
+            card.addView(preview, LinearLayout.LayoutParams(dp(88), dp(88)).apply { gravity = Gravity.CENTER_HORIZONTAL })
+            card.addView(button(getString(R.string.choose_image), false) { iconImagePicker.launch("image/*") }, matchButton(12, 60))
+            card.addView(button(getString(R.string.default_icon), false) {
+                AirPlayPersistence.clearCustomAirPlayIcon(this)
+                render()
+            }, matchButton(10, 60))
+            card.addView(label(getString(R.string.return_home_icon_description), 14, MUTED).apply { setPadding(0, dp(12), 0, 0) })
         }
         section(content, getString(R.string.audio_routing)) { card ->
             toggle(card, getString(R.string.contrib_audio_home_toggle_audio_focus), getString(R.string.contrib_audio_home_toggle_audio_focus_desc), AirPlayPersistence.loadAudioFocusEnabled(this)) { AirPlayPersistence.saveAudioFocusEnabled(this, it) }
@@ -1069,6 +1147,77 @@ class DiPlayActivity : ComponentActivity() {
         }
     }
 
+    private fun buildDiagnosticReport(appContext: Context): String = buildString {
+        appendLine("DiPlay ${version()} · private beta diagnostic report")
+        appendLine("Android ${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}")
+        appendLine("Head unit: ${Build.MANUFACTURER} ${Build.MODEL}")
+        appendLine("Connection: ${if (AirPlayPersistence.loadWirelessEnabled(appContext)) "wireless" else "USB"}")
+        appendLine("Authentication: local experimental beta identity; no remote fallback")
+        appendLine("CarPlay setup: ${if (setupError == null) "ready" else "authentication unavailable"}")
+        appendLine("Saved video preference (may differ from active session): ${if (AirPlayPersistence.loadHevcEnabled(appContext)) "HEVC" else "H.264"}; ${AirPlayPersistence.loadFps(appContext)} fps")
+        appendLine("CarPlay size: ${com.shilapi.xcertplay.airplay.CarPlaySize.fromWidthMillimeters(AirPlayPersistence.loadWidthPhysicalMm(appContext)).label}")
+        appendLine("Saved resolution preference (may differ from active session): ${AirPlayPersistence.loadDisplayScaleTenths(appContext) * 10}%")
+        appendLine("Session: ${if (CarPlayBackgroundSession.active) "active" else if (CarPlayBackgroundSession.hasSession()) "connecting" else "stopped"}")
+        appendLine("Head-unit board: ${Build.BOARD}; hardware: ${Build.HARDWARE}; build: ${Build.DISPLAY}")
+        appendLine()
+        appendLine("--- Last display negotiation (timestamps distinguish it from current settings) ---")
+        appendLine(DisplayDiagnosticSnapshot.report(appContext))
+        appendLine()
+        appendLine("--- Last received boot and app-launch result ---")
+        appendLine(StartupDiagnosticSnapshot.report(appContext))
+        appendLine("Startup settings: openAfterBoot=${AirPlayPersistence.loadAutoStartOnBoot(appContext)} " +
+            "connectWhenOpened=${DiPlayPreferences.autoConnect(appContext)}")
+        appendLine()
+        for (name in SessionLogFile.REPORT_NAMES) {
+            val file = File(appContext.filesDir, "logs/$name")
+            if (file.isFile) {
+                appendLine("--- $name ---")
+                file.useLines { lines ->
+                    lines.forEach { line -> DiagnosticRedactor.redact(line)?.let { appendLine(it) } }
+                }
+            }
+        }
+    }
+
+    private fun uploadDiagnostics(issueDescription: String) {
+        if (reportUploadInProgress) return
+        reportUploadInProgress = true
+        reportUploadButton?.apply { isEnabled = false; text = getString(R.string.uploading_to_cloud) }
+        val appContext = applicationContext
+        val fileName = reportFileName()
+        Thread({
+            val result = runCatching {
+                DiagnosticReportUpload.upload(fileName, issueDescription, buildDiagnosticReport(appContext))
+            }
+            runOnUiThread {
+                reportUploadInProgress = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                reportUploadButton?.apply { isEnabled = true; text = getString(R.string.upload_report_to_cloud) }
+                if (result.isSuccess) {
+                    reportIssueDescription = ""
+                    reportIssueInput?.text?.clear()
+                    AlertDialog.Builder(this)
+                        .setTitle(getString(R.string.report_uploaded))
+                        .setMessage(getString(R.string.report_uploaded_message))
+                        .setPositiveButton(getString(R.string.done), null)
+                        .show()
+                } else {
+                    val tooLarge = result.exceptionOrNull() is DiagnosticReportTooLargeException
+                    val dialog = AlertDialog.Builder(this)
+                        .setTitle(getString(R.string.report_upload_failed))
+                        .setMessage(getString(if (tooLarge) R.string.report_too_large_message else R.string.report_upload_failed_message))
+                    if (tooLarge) {
+                        dialog.setPositiveButton(getString(R.string.close), null)
+                    } else {
+                        dialog.setPositiveButton(getString(R.string.retry_report_upload)) { _, _ -> uploadDiagnostics(issueDescription) }
+                        .setNegativeButton(getString(R.string.close), null)
+                    }
+                    dialog.show()
+                }
+            }
+        }, "diplay-report-upload").start()
+    }
+
     private fun exportDiagnostics(uri: Uri? = null) {
         if (exportInProgress) return
         exportInProgress = true
@@ -1077,35 +1226,7 @@ class DiPlayActivity : ComponentActivity() {
         val fileName = reportFileName()
         Thread({
             val result = runCatching {
-                val report = buildString {
-                    appendLine("DiPlay ${version()} · private beta diagnostic report")
-                    appendLine("Android ${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}")
-                    appendLine("Head unit: ${Build.MANUFACTURER} ${Build.MODEL}")
-                    appendLine("Connection: ${if (AirPlayPersistence.loadWirelessEnabled(appContext)) "wireless" else "USB"}")
-                    appendLine("Authentication: local experimental beta identity; no remote fallback")
-                    appendLine("CarPlay setup: ${if (setupError == null) "ready" else "authentication unavailable"}")
-                    appendLine("Saved video preference (may differ from active session): ${if (AirPlayPersistence.loadHevcEnabled(appContext)) "HEVC" else "H.264"}; ${AirPlayPersistence.loadFps(appContext)} fps")
-                    appendLine("CarPlay size: ${com.shilapi.xcertplay.airplay.CarPlaySize.fromWidthMillimeters(AirPlayPersistence.loadWidthPhysicalMm(appContext)).label}")
-                    appendLine("Saved resolution preference (may differ from active session): ${AirPlayPersistence.loadDisplayScaleTenths(appContext) * 10}%")
-                    appendLine("Session: ${if (CarPlayBackgroundSession.active) "active" else if (CarPlayBackgroundSession.hasSession()) "connecting" else "stopped"}")
-                    appendLine("Head-unit board: ${Build.BOARD}; hardware: ${Build.HARDWARE}; build: ${Build.DISPLAY}")
-                    appendLine()
-                    appendLine("--- Last display negotiation (timestamps distinguish it from current settings) ---")
-                    appendLine(DisplayDiagnosticSnapshot.report(appContext))
-                    appendLine()
-                    appendLine("--- Last received boot and app-launch result ---")
-                    appendLine(StartupDiagnosticSnapshot.report(appContext))
-                    appendLine("Startup settings: openAfterBoot=${AirPlayPersistence.loadAutoStartOnBoot(appContext)} " +
-                        "connectWhenOpened=${DiPlayPreferences.autoConnect(appContext)}")
-                    appendLine()
-                    for (name in SessionLogFile.REPORT_NAMES) {
-                        val file = File(appContext.filesDir, "logs/$name")
-                        if (file.isFile) {
-                            appendLine("--- $name ---")
-                            file.useLines { lines -> lines.forEach { line -> DiagnosticRedactor.redact(line)?.let { appendLine(it) } } }
-                        }
-                    }
-                }
+                val report = buildDiagnosticReport(appContext)
                 if (uri != null) { DiagnosticExportStore.write(appContext.contentResolver, uri, report); uri }
                 else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     DiagnosticExportStore.saveToDownloads(appContext.contentResolver, fileName, report)

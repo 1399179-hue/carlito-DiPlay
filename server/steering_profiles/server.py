@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Private intake for named DiPlay steering profiles. No uploaded content is served or executed."""
 import hashlib
+import base64
 import json
 import os
 import re
+import shutil
 import threading
 import time
 import unicodedata
@@ -14,12 +16,20 @@ from urllib.parse import urlsplit
 
 BASE_PATH = "/diplay-profiles"
 MAX_BYTES = 32 * 1024
+MAX_REPORT_BYTES = 1024 * 1024
+MAX_REPORT_REQUEST_BYTES = 31 * 1024
+REPORT_CHUNK_BYTES = 16 * 1024
+MAX_REPORT_CHUNKS = 64
 OPERATIONS = {"play_pause", "next", "previous", "siri"}
 PROFILE_FIELDS = {
     "schemaVersion", "backend", "carModel", "headUnitModel", "manufacturer",
     "firmware", "androidVersion", "savedAt", "bindings",
 }
 BINDING_FIELDS = {"operation", "keyCode", "event", "source", "logTag", "broadcastAction", "keyExtra", "eventExtra", "logContains"}
+REPORT_FIELDS = {
+    "schemaVersion", "submittedAt", "fileName", "issueDescription",
+    "uploadId", "chunkIndex", "chunkCount", "content",
+}
 
 
 def profile_part(value):
@@ -89,6 +99,37 @@ def validate_profile(profile):
     return profile
 
 
+def validate_report_chunk(payload):
+    if not isinstance(payload, dict) or set(payload) != REPORT_FIELDS:
+        raise ValueError("Invalid report fields")
+    if type(payload["schemaVersion"]) is not int or payload["schemaVersion"] != 1:
+        raise ValueError("Unsupported report format")
+    now = int(time.time() * 1000)
+    if type(payload["submittedAt"]) is not int or not now - 30 * 86400 * 1000 < payload["submittedAt"] < now + 86400 * 1000:
+        raise ValueError("Invalid submission time")
+    if not re.fullmatch(r"DiPlay-[0-9]{8}-[0-9]{6}-[0-9]{3}\.txt", payload["fileName"]):
+        raise ValueError("Invalid report name")
+    description = payload["issueDescription"]
+    if not isinstance(description, str) or not description.strip() or len(description) > 2000:
+        raise ValueError("Invalid problem description")
+    if any(unicodedata.category(letter) == "Cc" and letter not in "\r\n\t" for letter in description):
+        raise ValueError("Invalid problem description")
+    upload_id = payload["uploadId"]
+    chunk_index = payload["chunkIndex"]
+    chunk_count = payload["chunkCount"]
+    if not isinstance(upload_id, str) or not re.fullmatch(r"[0-9a-f]{64}", upload_id):
+        raise ValueError("Invalid upload identifier")
+    if type(chunk_index) is not int or type(chunk_count) is not int or not 1 <= chunk_count <= MAX_REPORT_CHUNKS or not 0 <= chunk_index < chunk_count:
+        raise ValueError("Invalid report chunk")
+    content = payload["content"]
+    if not isinstance(content, str):
+        raise ValueError("Invalid report chunk")
+    decoded = base64.b64decode(content.encode("ascii"), validate=True)
+    if not decoded or len(decoded) > REPORT_CHUNK_BYTES or (chunk_index < chunk_count - 1 and len(decoded) != REPORT_CHUNK_BYTES):
+        raise ValueError("Invalid report chunk size")
+    return payload, decoded
+
+
 class ProfileStore:
     def __init__(self, root):
         self.root = root.resolve()
@@ -98,7 +139,7 @@ class ProfileStore:
         self.used_bytes = sum(file.stat().st_size for file in self.root.rglob("*.json") if file.is_file())
         self.max_bytes = int(os.environ.get("DIPLAY_PROFILES_MAX_STORAGE", str(100 * 1024 * 1024)))
 
-    def admit(self, remote):
+    def admit(self, remote, limit=60):
         current = time.monotonic()
         with self.lock:
             if len(self.requests) >= 4096:
@@ -108,7 +149,7 @@ class ProfileStore:
             times = self.requests[remote]
             while times and times[0] < current - 3600:
                 times.popleft()
-            if len(times) >= 60:
+            if len(times) >= limit:
                 return False
             times.append(current)
             return True
@@ -137,6 +178,86 @@ class ProfileStore:
         return receipt, name
 
 
+class ReportStore:
+    def __init__(self, root):
+        self.root = root.resolve()
+        self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.pending = (self.root / ".pending").resolve()
+        self.pending.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.lock = threading.Lock()
+        self.used_bytes = sum(file.stat().st_size for file in self.root.rglob("*.txt") if file.is_file())
+        self.max_bytes = int(os.environ.get("DIPLAY_REPORTS_MAX_STORAGE", str(1024 * 1024 * 1024)))
+
+    def save_chunk(self, content):
+        payload, decoded = validate_report_chunk(json.loads(content.decode("utf-8")))
+        receipt = payload["uploadId"]
+        upload = self.pending / receipt
+        metadata = {
+            key: payload[key]
+            for key in ("schemaVersion", "submittedAt", "fileName", "issueDescription", "uploadId", "chunkCount")
+        }
+        with self.lock:
+            self._discard_expired()
+            upload.mkdir(parents=True, exist_ok=True, mode=0o700)
+            metadata_file = upload / "metadata.json"
+            if metadata_file.is_file():
+                if json.loads(metadata_file.read_text(encoding="utf-8")) != metadata:
+                    raise ValueError("Report metadata changed")
+            else:
+                metadata_file.write_text(json.dumps(metadata, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+                metadata_file.chmod(0o600)
+            chunk_file = upload / f"{payload['chunkIndex']:03d}.part"
+            if not chunk_file.is_file():
+                temporary = chunk_file.with_suffix(".tmp")
+                temporary.write_bytes(decoded)
+                temporary.replace(chunk_file)
+                chunk_file.chmod(0o600)
+            chunks = [upload / f"{index:03d}.part" for index in range(payload["chunkCount"])]
+            if not all(chunk.is_file() for chunk in chunks):
+                return receipt, payload["fileName"], False
+            report_bytes = b"".join(chunk.read_bytes() for chunk in chunks)
+            if len(report_bytes) > MAX_REPORT_BYTES:
+                raise ValueError("Diagnostic report too large")
+            report = report_bytes.decode("utf-8")
+            if not report.startswith("DiPlay ") or "diagnostic report" not in report[:200]:
+                raise ValueError("Invalid diagnostic report")
+            expected = hashlib.sha256(payload["issueDescription"].strip().encode("utf-8") + b"\0" + report_bytes).hexdigest()
+            if expected != receipt:
+                raise ValueError("Diagnostic report checksum mismatch")
+            stamp = time.strftime("%Y-%m-%d", time.localtime(payload["submittedAt"] / 1000))
+            destination = self.root / stamp / receipt / payload["fileName"]
+            body = (
+                "DiPlay user report\n"
+                f"Submitted at: {payload['submittedAt']}\n\n"
+                "Problem description:\n"
+                f"{payload['issueDescription'].strip()}\n\n"
+                "--- Diagnostic report ---\n"
+                f"{report}"
+            ).encode("utf-8")
+            if destination.is_file():
+                shutil.rmtree(upload, ignore_errors=True)
+                return receipt, destination.name, True
+            if self.used_bytes + len(body) > self.max_bytes:
+                raise OSError("Report storage is full")
+            destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            temporary = destination.with_suffix(destination.suffix + ".tmp")
+            with temporary.open("wb") as output:
+                output.write(body)
+                output.flush()
+                os.fsync(output.fileno())
+            temporary.replace(destination)
+            destination.chmod(0o600)
+            self.used_bytes += len(body)
+            shutil.rmtree(upload, ignore_errors=True)
+        return receipt, destination.name, True
+
+    def _discard_expired(self):
+        cutoff = time.time() - 86400
+        for directory in self.pending.iterdir():
+            if directory.is_dir() and directory.stat().st_mtime < cutoff:
+                shutil.rmtree(directory, ignore_errors=True)
+
+
 class Handler(BaseHTTPRequestHandler):
     def setup(self):
         super().setup()
@@ -159,27 +280,34 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(404, {"ok": False, "error": "Not found"})
 
     def do_POST(self):
-        if urlsplit(self.path).path != BASE_PATH + "/v1/profiles":
+        path = urlsplit(self.path).path
+        if path not in (BASE_PATH + "/v1/profiles", BASE_PATH + "/v1/reports"):
             self.reply(404, {"ok": False, "error": "Not found"})
             return
         remote = self.headers.get("X-Real-IP", self.client_address[0])[:100]
-        if not self.server.store.admit(remote):
+        request_limit = 60 if path.endswith("/profiles") else 300
+        if not self.server.store.admit(f"{remote}|{path}", request_limit):
             self.reply(429, {"ok": False, "error": "Try again later"})
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            if length > MAX_BYTES:
-                self.reply(413, {"ok": False, "error": "Profile too large"})
+            limit = MAX_BYTES if path.endswith("/profiles") else MAX_REPORT_REQUEST_BYTES
+            if length > limit:
+                self.reply(413, {"ok": False, "error": "Submission too large"})
                 return
             if length <= 0 or self.headers.get("Transfer-Encoding") or self.headers.get_content_type() != "application/json":
                 raise ValueError("JSON profile required")
             content = self.rfile.read(length)
             if len(content) != length:
                 raise ValueError("Incomplete profile")
-            receipt, name = self.server.store.save(content)
-            self.reply(201, {"ok": True, "receipt": receipt, "fileName": name})
+            if path.endswith("/profiles"):
+                receipt, name = self.server.store.save(content)
+                complete = True
+            else:
+                receipt, name, complete = self.server.report_store.save_chunk(content)
+            self.reply(201, {"ok": True, "receipt": receipt, "fileName": name, "complete": complete})
         except (ValueError, UnicodeError, TypeError, KeyError, RecursionError):
-            self.reply(422, {"ok": False, "error": "Invalid steering profile"})
+            self.reply(422, {"ok": False, "error": "Invalid submission"})
         except OSError:
             self.reply(503, {"ok": False, "error": "Storage temporarily unavailable"})
 
@@ -187,9 +315,11 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     os.umask(0o077)
     root = Path(os.environ.get("DIPLAY_PROFILES_DATA", str(Path(__file__).parent / "data" / "profiles")))
+    report_root = Path(os.environ.get("DIPLAY_REPORTS_DATA", str(Path(__file__).parent / "data" / "reports")))
     server = ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("DIPLAY_PROFILES_PORT", "18794"))), Handler)
     server.daemon_threads = True
     server.store = ProfileStore(root)
+    server.report_store = ReportStore(report_root)
     try:
         server.serve_forever()
     finally:

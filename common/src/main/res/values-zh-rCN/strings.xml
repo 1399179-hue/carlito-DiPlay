@@ -532,4 +532,18 @@
     <string name="steering_log_tag">日志来源（Tag）</string>
     <string name="steering_log_parts">填入稳定的按键日志片段。多个片段用 &amp;&amp; 分隔，全部出现时触发一次。不要包含时间、进程号等动态内容。</string>
     <string name="steering_log_match_invalid">请填写日志来源和 1 至 4 个有效片段，每个片段不超过 160 字。</string>
+    <string name="return_home_icon">CarPlay 返回桌面图标</string>
+    <string name="return_home_icon_description">选择一张正方形图片，作为 CarPlay 返回车机桌面的按钮图标。下次连接时生效。</string>
+    <string name="describe_the_problem">请填写故障现象、发生时间和预期结果</string>
+    <string name="upload_report_to_cloud">上传报告到云端</string>
+    <string name="uploading_to_cloud">正在上传到云端…</string>
+    <string name="describe_problem_before_uploading">请先填写故障描述。</string>
+    <string name="problem_description_too_long">故障描述不能超过 2000 个字符。</string>
+    <string name="report_upload_privacy">仅在点击按钮后上传，故障描述会和已脱敏的诊断报告一起发送。</string>
+    <string name="report_uploaded">报告已上传</string>
+    <string name="report_uploaded_message">云端已收到故障描述和诊断报告。</string>
+    <string name="report_upload_failed">报告上传失败</string>
+    <string name="report_upload_failed_message">请检查车机网络后重试。</string>
+    <string name="retry_report_upload">重试</string>
+    <string name="report_too_large_message">报告超过 1 MiB，请保存到本机后手动分享。</string>
 </resources>
