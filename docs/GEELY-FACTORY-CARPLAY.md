@@ -1,6 +1,6 @@
 # Geely G636 / FX11 factory CarPlay adaptation
 
-This adaptation targets the Geely factory CarPlay implementation supplied for the G636 / FX11 head unit. It preserves the upstream application version, **0.2.9 / code 28**. Hardware operation has not been confirmed; the owner has no iPhone available for an end-to-end session.
+This adaptation targets the Geely factory CarPlay implementation supplied for the G636 / FX11 head unit. It follows the upstream application version, currently **0.2.10 / code 29**. Hardware operation has not been confirmed; the owner has no iPhone available for an end-to-end session.
 
 ## Reference evidence
 
@@ -22,6 +22,7 @@ The supplied `com.autolink.carplay.apk` provides the receiver service; `com.auto
 - Detection uses G636 / FX11 / Geely Android identity, a Geely vendor configuration, or the installed factory receiver together with the Geely system service. This does not prove the exact hardware model or grant system permissions.
 - A user-selected image and other custom icon labels remain supported. The previous automatic BYD label is replaced with the Geely label on a detected Geely head unit.
 - Audio focus is enabled by default on detected Geely units. An explicitly saved audio-focus setting and manual stream selections remain effective. Other units retain their existing artwork and default settings.
+- The 0.2.10 merge retains upstream telephone communication mode, available platform echo cancellation and noise suppression, and microphone diagnostics. Each microphone-source attempt owns its effects; rejected attempts release them before trying the Android fallback. Call teardown restores the previous audio mode.
 - Runtime reflection and restricted Bluetooth methods can be unavailable to an ordinary installed app. Rejected operations are recorded in technical diagnostics and fall back without disabling Bluetooth or changing system application settings.
 - The factory receiver service and DiPlay must not own the same wired phone session simultaneously. This change does not disable, stop or replace the factory service.
 - A disconnected A2DP-sink link is not forcibly reconnected at teardown; the head unit resumes its normal Bluetooth policy after the guard closes.
