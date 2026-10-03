@@ -3820,9 +3820,25 @@ class CarPlayHostActivity : ComponentActivity() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun applyFullscreenMode() {
         val hideTop = hideTopBar
         val hideBottom = hideBottomBar
+        var legacyFlags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        if (hideTop) {
+            legacyFlags = legacyFlags or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_FULLSCREEN
+        }
+        if (hideBottom) {
+            legacyFlags = legacyFlags or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+        }
+        if (hideTop || hideBottom) {
+            legacyFlags = legacyFlags or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        }
+        window.decorView.systemUiVisibility = legacyFlags
         WindowCompat.setDecorFitsSystemWindows(window, !(hideTop && hideBottom))
         val controller = WindowInsetsControllerCompat(window, window.decorView)
         if (hideTop) {

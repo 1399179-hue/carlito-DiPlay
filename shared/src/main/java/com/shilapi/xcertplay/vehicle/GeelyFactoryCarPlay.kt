@@ -82,13 +82,19 @@ class GeelyFactoryCarPlay private constructor(private val config: JSONObject?) {
 
         fun load(context: Context): GeelyFactoryCarPlay? {
             val identity = "${Build.MANUFACTURER} ${Build.BRAND} ${Build.MODEL} ${Build.PRODUCT} ${Build.DEVICE}"
-            val modelMatches = Regex("(?i)(?:^|[^a-z0-9])(?:G636|FX11|Geely)(?:$|[^a-z0-9])").containsMatchIn(identity)
+            val modelMatches = Regex("(?i)(?:^|[^a-z0-9])(?:G636|FX11|KX11|Geely)(?:$|[^a-z0-9])").containsMatchIn(identity)
             val configMatches = factory.config?.optJSONObject("ManufacturerInfo")
                 ?.optString("Manufacturer")?.equals("Geely", true) == true
-            val installed = runCatching {
+            val factoryReceiverInstalled = runCatching {
                 context.packageManager.getApplicationInfo("com.autolink.carplay", 0)
-                context.packageManager.getApplicationInfo("com.geely.service.oneosapi", 0)
             }.isSuccess
+            val factoryUiOrServiceInstalled = listOf(
+                "com.autolink.carplay.app",
+                "com.geely.service.oneosapi",
+            ).any { packageName ->
+                runCatching { context.packageManager.getApplicationInfo(packageName, 0) }.isSuccess
+            }
+            val installed = factoryReceiverInstalled && factoryUiOrServiceInstalled
             return factory.takeIf { modelMatches || configMatches || installed }
         }
 

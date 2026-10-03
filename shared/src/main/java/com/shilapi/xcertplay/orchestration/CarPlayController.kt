@@ -343,11 +343,16 @@ class CarPlayController(
         }
 
         override fun onCommand(session: AirPlaySession, type: String, params: Map<String, Any?>) {
-            if (activeSession === session && type.equals("disconnectBT", true)) {
-                val address = params["deviceID"] as? String
-                if (address != null && (wirelessPeerBluetoothAddress == null || address.equals(wirelessPeerBluetoothAddress, true))) {
-                    configureFactoryBluetooth(session, address)
+            if (activeSession === session && isBluetoothHandoffCommand(type)) {
+                val requestedAddress = (params["deviceID"] as? String)
+                    ?.takeIf { BluetoothAdapter.checkBluetoothAddress(it.uppercase(Locale.US)) }
+                val connectedAddress = wirelessPeerBluetoothAddress
+                val address = when {
+                    requestedAddress == null -> connectedAddress
+                    connectedAddress == null || requestedAddress.equals(connectedAddress, true) -> requestedAddress
+                    else -> null
                 }
+                address?.let { configureFactoryBluetooth(session, it) }
             }
             debugLog(
                 "AirPlay command type=$type params=${params.keys.sorted().joinToString(",")}",
@@ -1801,7 +1806,8 @@ class CarPlayController(
 
     private fun isBluetoothHandoffCommand(type: String): Boolean =
         type.equals("disableBluetooth", ignoreCase = true) ||
-            type.equals("disable-bluetooth", ignoreCase = true)
+            type.equals("disable-bluetooth", ignoreCase = true) ||
+            type.equals("disconnectBT", ignoreCase = true)
 
     private fun startWirelessHotspot(generation: Int): WirelessHotspotInfo {
         val hotspotMode = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&

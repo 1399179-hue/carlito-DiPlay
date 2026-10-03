@@ -1,5 +1,6 @@
 # DiPlay 0.2.10 — 2026-10-03
 
+- Recognize Geely KX11 head units, release the active phone's factory Bluetooth music channel when wireless CarPlay requests its handoff, and reinforce immersive full-screen recovery on Android 11 vendor firmware.
 - Merge upstream 0.2.10 / code 29 while retaining Geely factory artwork, audio and Bluetooth handling, HUD display limits and independently learned steering controls. See [fork update notes](docs/UPDATE-NOTES-0.2.10.md).
 - Publish CarPlay song metadata, position and artwork to Android media sessions; bound artwork queues and reject stale work across sessions (#82).
 - Preserve normal USBMUX frames while handling narrowly validated handshake padding (#114); let USB connect without saved wireless-hotspot credentials (#130).
