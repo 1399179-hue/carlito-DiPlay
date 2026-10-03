@@ -3004,15 +3004,21 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     private fun decodeAirPlayIcon(encoded: ByteArray): AirPlayIcon? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(encoded, 0, encoded.size, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0 ||
-            bounds.outWidth != bounds.outHeight || bounds.outWidth > 1024 || bounds.outMimeType != "image/png"
+        val pngSignature = byteArrayOf(
+            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        )
+        if (encoded.size < pngSignature.size ||
+            !encoded.copyOfRange(0, pngSignature.size).contentEquals(pngSignature)
         ) {
             return null
         }
-        val bitmap = BitmapFactory.decodeByteArray(encoded, 0, encoded.size) ?: return null
-        bitmap.recycle()
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(encoded, 0, encoded.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0 ||
+            bounds.outWidth != bounds.outHeight || bounds.outWidth > 1024
+        ) {
+            return null
+        }
         return AirPlayIcon(bounds.outWidth, bounds.outHeight, encoded)
     }
 
