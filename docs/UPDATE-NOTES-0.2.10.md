@@ -11,14 +11,14 @@
 
 ## 吉利适配与方向盘按键
 
-- 修复星越 L 无线 CarPlay 与原车蓝牙音乐争抢播放通道的问题。
-- 改善星越 L 车机隐藏系统栏后的全屏恢复，减少画面底部被系统栏占用。
+- 修复部分车型无线 CarPlay 与原车蓝牙音乐争抢播放通道的问题。
+- 改善部分 Android 11 车机隐藏系统栏后的全屏恢复，减少画面底部被系统栏占用。
 - 媒体方控随当前 CarPlay 音源接管，减少按键被原车蓝牙播放器截获。
 - 保留原厂返回桌面图标、音频协调、蓝牙音乐切换、原厂语音键识别和 HUD 设置。
 - 方控继续通过本应用的按键识别功能配置，支持保存、导出和上传云端。
 - 更新后继续使用已有配置和配对信息。
 
-功能效果取决于车机支持的能力和权限。星越 L KX11 已根据用户诊断日志修复，仍需安装后复测；吉利 G636 / FX11 仍需连接 iPhone 后实车确认。HUD 导航仅支持车机开放的 HUD 显示屏。
+功能效果取决于车机支持的能力和权限。本次音频通道修复适用于发出蓝牙音乐交接请求的车型；星越 L KX11 已根据用户诊断日志完成针对性适配，仍需安装后复测。吉利 G636 / FX11 仍需连接 iPhone 后实车确认。HUD 导航仅支持车机开放的 HUD 显示屏。
 
 ## What's new
 
@@ -31,11 +31,11 @@
 
 ## Geely adaptation and steering controls
 
-- Fix factory Bluetooth music competing with wireless CarPlay for audio on Xingyue L.
-- Improve full-screen recovery after hiding the system bars on Xingyue L head units.
+- Fix factory Bluetooth music competing with wireless CarPlay for audio on affected head units.
+- Improve full-screen recovery after hiding the system bars on affected Android 11 head units.
 - Keep media steering controls with the active CarPlay source instead of the factory Bluetooth player.
 - Retain factory return-to-home artwork, coordinated audio, Bluetooth music handoff, factory voice-button recognition and HUD settings.
 - Continue identifying steering buttons within the app, with saved configurations, export and cloud upload.
 - Retain existing settings and pairing records when updating.
 
-Features depend on the head unit's capabilities and permissions. The Xingyue L KX11 fix is based on a user diagnostic report and still needs an installed retest; Geely G636 / FX11 behavior still needs vehicle verification with an iPhone. HUD navigation requires a HUD display exposed by the head unit.
+Features depend on the head unit's capabilities and permissions. The audio-channel fix applies when a head unit receives the Bluetooth music handoff request. The Xingyue L KX11 adaptation is based on a user diagnostic report and still needs an installed retest; Geely G636 / FX11 behavior still needs vehicle verification with an iPhone. HUD navigation requires a HUD display exposed by the head unit.

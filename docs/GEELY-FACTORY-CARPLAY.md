@@ -1,6 +1,6 @@
 # Geely G636 / FX11 / KX11 factory CarPlay adaptation
 
-This adaptation targets the Geely factory CarPlay implementation supplied for G636, FX11 and KX11 head units. It follows the upstream application version, currently **0.2.10 / code 29**. A Xingyue L KX11 user report confirms the Android identity and exposes the Bluetooth handoff and full-screen failures; the resulting fix still needs an installed vehicle retest.
+This adaptation targets the Geely factory CarPlay implementation supplied for G636, FX11 and KX11 head units. It follows the upstream application version, currently **0.2.10 / code 29**. A Xingyue L KX11 user report confirms the Android identity and exposes the Bluetooth handoff and full-screen failures; the Bluetooth handoff fix is driven by the iPhone request and also applies to other affected head units. The resulting changes still need an installed vehicle retest.
 
 ## Reference evidence
 

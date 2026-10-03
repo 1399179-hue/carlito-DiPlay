@@ -272,7 +272,9 @@ class CarPlayController(
                 if (videoListener != null) session.setVideoPlaybackAllowed(VideoInCar.allowed)
             }
             activeSession = session
-            wirelessPeerBluetoothAddress?.let { configureFactoryBluetooth(session, it) }
+            if (geelyFactory != null) {
+                wirelessPeerBluetoothAddress?.let { configureBluetoothAudioHandoff(session, it) }
+            }
             debugLog(
                 "AirPlay session active controller=${session.controllerId ?: "unknown"} " +
                     "peer=${session.host}",
@@ -352,7 +354,7 @@ class CarPlayController(
                     connectedAddress == null || requestedAddress.equals(connectedAddress, true) -> requestedAddress
                     else -> null
                 }
-                address?.let { configureFactoryBluetooth(session, it) }
+                address?.let { configureBluetoothAudioHandoff(session, it) }
             }
             debugLog(
                 "AirPlay command type=$type params=${params.keys.sorted().joinToString(",")}",
@@ -2012,8 +2014,8 @@ class CarPlayController(
             }
         }
 
-    private fun configureFactoryBluetooth(session: AirPlaySession, address: String) {
-        if (geelyFactory == null || !BluetoothAdapter.checkBluetoothAddress(address.uppercase(Locale.US))) return
+    private fun configureBluetoothAudioHandoff(session: AirPlaySession, address: String) {
+        if (!BluetoothAdapter.checkBluetoothAddress(address.uppercase(Locale.US))) return
         mainHandler.post {
             if (closed || activeSession !== session || factoryBluetoothSession === session) return@post
             val bonded = runCatching { bluetoothAdapter?.bondedDevices?.any { it.address.equals(address, true) } == true }.getOrDefault(false)
