@@ -450,7 +450,11 @@
     <string name="adb_battery_reconnect">如果 CarPlay 在电池数据就绪前已连接，请使用“应用并重新连接”以启用电池数据上报。</string>
     <string name="geely_vehicle">吉利车机</string>
     <string name="geely_hud_navigation">HUD 导航提示</string>
-    <string name="geely_hud_navigation_description">车机提供 HUD 显示屏时，显示下一步方向、距离和道路名称。首次使用时请允许显示在其他应用上层。</string>
+    <string name="geely_hud_navigation_description">在所选副屏显示下一步方向、距离和道路名称。首次使用时请允许显示在其他应用上层。</string>
+    <string name="geely_hud_projection_screen">HUD 投影屏幕</string>
+    <string name="geely_hud_projection_auto">自动选择</string>
+    <string name="geely_hud_projection_display">%1$s · %2$dx%3$d · ID %4$d</string>
+    <string name="geely_hud_no_projection_display">未检测到可用副屏。请先在车机中开启 HUD 投影，再返回此页面。</string>
     <string name="geely_steering_wheel">按键兼容模式</string>
     <string name="geely_steering_wheel_description">按键识别无法使用时，可尝试此模式来控制播放和打开 Siri。</string>
     <string name="wheel_speed_for_tunnels">隧道中的车轮速度 · 需要 ADB</string>

@@ -63,6 +63,8 @@ object AirPlayPersistence {
     private const val KEY_MEDIA_BUFFER_MS = "media_buffer_ms"
     private const val KEY_CLUSTER_MAP = "cluster_map_enabled"
     private const val KEY_GEELY_HUD_ENABLED = "geely_hud_enabled"
+    private const val KEY_GEELY_HUD_DISPLAY_ID = "geely_hud_display_id"
+    private const val KEY_GEELY_HUD_DISPLAY_NAME = "geely_hud_display_name"
     private const val KEY_GEELY_STEERING_ENABLED = "geely_steering_enabled"
     private const val KEY_CENTER_MAP_OVERLAY = "center_map_overlay"
     private const val KEY_LAUNCHER_MAP_SHARING = "launcher_map_sharing"
@@ -486,6 +488,25 @@ object AirPlayPersistence {
     fun saveGeelyHudEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_GEELY_HUD_ENABLED, enabled)
+            .apply()
+    }
+
+    fun loadGeelyHudDisplayId(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_GEELY_HUD_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
+
+    fun loadGeelyHudDisplayName(context: Context): String? =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_GEELY_HUD_DISPLAY_NAME, null)
+            ?.takeIf { it.isNotBlank() }
+
+    fun saveGeelyHudDisplay(context: Context, displayId: Int, displayName: String?) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_GEELY_HUD_DISPLAY_ID, displayId)
+            .apply {
+                if (displayName.isNullOrBlank()) remove(KEY_GEELY_HUD_DISPLAY_NAME)
+                else putString(KEY_GEELY_HUD_DISPLAY_NAME, displayName)
+            }
             .apply()
     }
 

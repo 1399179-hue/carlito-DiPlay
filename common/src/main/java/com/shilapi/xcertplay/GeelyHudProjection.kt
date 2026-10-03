@@ -26,6 +26,13 @@ import java.lang.ref.WeakReference
 import java.util.Locale
 import kotlin.math.min
 
+internal data class GeelyHudDisplay(
+    val id: Int,
+    val name: String,
+    val width: Int,
+    val height: Int,
+)
+
 /** CarPlay maneuver projection for a Geely head unit's secondary HUD display. */
 internal object GeelyHudProjection : DisplayManager.DisplayListener {
     private const val TAG = "DiPlay-GeelyHud"
@@ -88,6 +95,47 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
         mainHandler.post(::refresh)
     }
 
+    fun availableDisplays(context: Context): List<GeelyHudDisplay> =
+        context.getSystemService(DisplayManager::class.java)?.displays.orEmpty()
+            .asSequence()
+            .filter { it.displayId != Display.DEFAULT_DISPLAY && it.state != Display.STATE_OFF }
+            .map {
+                GeelyHudDisplay(
+                    id = it.displayId,
+                    name = it.name,
+                    width = it.mode.physicalWidth,
+                    height = it.mode.physicalHeight,
+                )
+            }
+            .sortedBy(GeelyHudDisplay::id)
+            .toList()
+
+    fun selectDisplay(context: Context, display: GeelyHudDisplay?) {
+        AirPlayPersistence.saveGeelyHudDisplay(
+            context,
+            display?.id ?: Display.INVALID_DISPLAY,
+            display?.name,
+        )
+        mainHandler.post(::refresh)
+    }
+
+    fun diagnosticReport(context: Context): String {
+        val selectedId = AirPlayPersistence.loadGeelyHudDisplayId(context)
+        val selectedName = AirPlayPersistence.loadGeelyHudDisplayName(context).orEmpty()
+        val displays = availableDisplays(context)
+        return buildString {
+            append("enabled=${AirPlayPersistence.loadGeelyHudEnabled(context)} ")
+            append("overlayPermission=${Settings.canDrawOverlays(context)} ")
+            append("selectedId=$selectedId selectedName=${selectedName.ifBlank { "automatic" }} ")
+            append("attachedId=$attachedDisplayId")
+            appendLine()
+            append("availableDisplays=")
+            if (displays.isEmpty()) append("none") else append(
+                displays.joinToString { "${it.id}:${it.name}:${it.width}x${it.height}" },
+            )
+        }
+    }
+
     override fun onDisplayAdded(displayId: Int) = refresh()
     override fun onDisplayRemoved(displayId: Int) = refresh()
     override fun onDisplayChanged(displayId: Int) = refresh()
@@ -105,14 +153,18 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
             detachWindow()
             return
         }
-        val display = displayManager?.displays
-            ?.filter {
-                it.displayId != Display.DEFAULT_DISPLAY &&
-                    it.state != Display.STATE_OFF &&
-                    !it.name.contains("com.byd.containerservice", ignoreCase = true) &&
-                    !it.name.contains("ClusterProjectionDisplay", ignoreCase = true)
-            }
-            ?.firstOrNull { it.name.contains("hud", ignoreCase = true) }
+        val displays = displayManager?.displays
+            ?.filter { it.displayId != Display.DEFAULT_DISPLAY && it.state != Display.STATE_OFF }
+            .orEmpty()
+        val savedId = AirPlayPersistence.loadGeelyHudDisplayId(activity)
+        val savedName = AirPlayPersistence.loadGeelyHudDisplayName(activity)
+        val display = if (savedId != Display.INVALID_DISPLAY || savedName != null) {
+            displays.firstOrNull { it.displayId == savedId }
+                ?: displays.firstOrNull { it.name == savedName }
+        } else {
+            displays.firstOrNull { it.name.contains("hud", ignoreCase = true) }
+                ?: displays.singleOrNull()
+        }
         if (display == null) {
             detachWindow()
             return

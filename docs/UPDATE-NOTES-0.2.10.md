@@ -11,6 +11,7 @@
 
 ## 吉利适配与方向盘按键
 
+- HUD 投影会列出车机开放的可用副屏，可由用户选择并记住目标屏幕；诊断报告会记录副屏识别和投影状态，便于排查 HUD 无显示问题。
 - 设置中可选择并裁剪 CarPlay 返回车机桌面的图标，也可随时恢复默认图标。
 - 诊断页面新增故障描述和一键上传云端，只有用户主动点击后才会投送报告；单份报告上限为 1 MiB。
 - 修复吉利原厂环境中导航声音未使用独立导航通道的问题；已手动选择的通道保持不变。
@@ -34,6 +35,7 @@
 
 ## Geely adaptation and steering controls
 
+- HUD projection lists the secondary displays exposed by the head unit, lets the user choose and remember the target, and records display detection and projection status in diagnostic reports.
 - Choose and crop the CarPlay return-to-home icon in Settings, or restore the default.
 - Add an issue-description field and one-tap diagnostic upload; reports are sent only after the user taps upload and are limited to 1 MiB each.
 - Route guidance through the separate factory navigation channel on Geely head units while preserving a channel selected by the user.
@@ -44,4 +46,4 @@
 - Continue identifying steering buttons within the app, with saved configurations, export and cloud upload.
 - Retain existing settings and pairing records when updating.
 
-Features depend on the head unit's capabilities and permissions. The audio-channel fix applies when a head unit receives the Bluetooth music handoff request. The Xingyue L KX11 adaptation is based on a user diagnostic report and still needs an installed retest; Geely G636 / FX11 behavior still needs vehicle verification with an iPhone. HUD navigation requires a HUD display exposed by the head unit.
+Features depend on the head unit's capabilities and permissions. The audio-channel fix applies when a head unit receives the Bluetooth music handoff request. The Xingyue L KX11 adaptation is based on a user diagnostic report and still needs an installed retest; Geely G636 / FX11 behavior still needs vehicle verification with an iPhone. HUD projection requires a secondary display exposed by the head unit.

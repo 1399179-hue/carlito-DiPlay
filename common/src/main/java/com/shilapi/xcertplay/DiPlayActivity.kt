@@ -412,6 +412,37 @@ class DiPlayActivity : ComponentActivity() {
                 getString(R.string.geely_hud_navigation_description),
                 AirPlayPersistence.loadGeelyHudEnabled(this),
             ) { GeelyHudProjection.setEnabled(this, it) }
+            val hudDisplays = GeelyHudProjection.availableDisplays(this)
+            if (hudDisplays.isEmpty()) {
+                card.addView(
+                    label(getString(R.string.geely_hud_no_projection_display), 14, MUTED).apply {
+                        setPadding(0, dp(4), 0, dp(12))
+                    },
+                )
+            } else {
+                val savedDisplayId = AirPlayPersistence.loadGeelyHudDisplayId(this)
+                val savedDisplayName = AirPlayPersistence.loadGeelyHudDisplayName(this)
+                val selectedDisplayIndex = hudDisplays.indexOfFirst {
+                    it.id == savedDisplayId || it.name == savedDisplayName
+                }
+                val displayOptions = listOf(getString(R.string.geely_hud_projection_auto)) +
+                    hudDisplays.map {
+                        getString(
+                            R.string.geely_hud_projection_display,
+                            it.name,
+                            it.width,
+                            it.height,
+                            it.id,
+                        )
+                    }
+                choice(
+                    card,
+                    getString(R.string.geely_hud_projection_screen),
+                    displayOptions,
+                    selectedDisplayIndex + 1,
+                    reconnects = false,
+                ) { index -> GeelyHudProjection.selectDisplay(this, hudDisplays.getOrNull(index - 1)) }
+            }
             toggle(
                 card,
                 getString(R.string.geely_steering_wheel),
@@ -1167,6 +1198,9 @@ class DiPlayActivity : ComponentActivity() {
         appendLine(StartupDiagnosticSnapshot.report(appContext))
         appendLine("Startup settings: openAfterBoot=${AirPlayPersistence.loadAutoStartOnBoot(appContext)} " +
             "connectWhenOpened=${DiPlayPreferences.autoConnect(appContext)}")
+        appendLine()
+        appendLine("--- HUD projection ---")
+        appendLine(GeelyHudProjection.diagnosticReport(appContext))
         appendLine()
         for (name in SessionLogFile.REPORT_NAMES) {
             val file = File(appContext.filesDir, "logs/$name")

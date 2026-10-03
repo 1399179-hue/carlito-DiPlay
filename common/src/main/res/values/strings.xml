@@ -451,7 +451,11 @@
     <string name="adb_battery_reconnect">If CarPlay connected before the battery was ready, use Apply and reconnect to enable battery reporting.</string>
     <string name="geely_vehicle">Geely vehicle</string>
     <string name="geely_hud_navigation">Navigation on the HUD</string>
-    <string name="geely_hud_navigation_description">Show the next turn, distance and road name if the head unit provides a HUD display. Allow display-over-apps access when asked.</string>
+    <string name="geely_hud_navigation_description">Show the next turn, distance and road name on a secondary display. Allow display-over-apps access when asked.</string>
+    <string name="geely_hud_projection_screen">HUD projection display</string>
+    <string name="geely_hud_projection_auto">Automatic selection</string>
+    <string name="geely_hud_projection_display">%1$s · %2$dx%3$d · ID %4$d</string>
+    <string name="geely_hud_no_projection_display">No secondary display is available. Turn on HUD projection in the head unit, then return to this page.</string>
     <string name="geely_steering_wheel">Steering-button compatibility mode</string>
     <string name="geely_steering_wheel_description">If button identification is unavailable, try this mode to control playback and open Siri.</string>
     <string name="wheel_speed_for_tunnels">Wheel speed for tunnels · needs ADB</string>
