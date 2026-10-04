@@ -24,7 +24,15 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], qualifiers = "en", shadows = [FileProviderPathTestShadow::class])
 class DiagnosticExportUiTest {
-    @Test fun missingPickerSavesAReportAndProvidesSelectableTextInsideDiPlay() {
+    @Test fun missingPickerSavesAReportWithoutExposingTechnicalText() {
+        checkMissingPickerExport(developer = false)
+    }
+
+    @Test fun versionUnlockAllowsSelectableDiagnosticText() {
+        checkMissingPickerExport(developer = true)
+    }
+
+    private fun checkMissingPickerExport(developer: Boolean) {
         val controller = Robolectric.buildActivity(DiPlayActivity::class.java).setup()
         val activity = controller.get()
         val context = activity.applicationContext
@@ -40,6 +48,16 @@ class DiagnosticExportUiTest {
         }
         ReflectionHelpers.setField(activity, "export", missingPicker)
         try {
+            assertFalse(SteeringProfiles.developerUnlocked(activity))
+            if (developer) {
+                ReflectionHelpers.setField(activity, "page", "about")
+                ReflectionHelpers.callInstanceMethod<Unit>(activity, "render")
+                repeat(7) {
+                    descendants(activity.window.decorView).filterIsInstance<TextView>()
+                        .single { it.text.startsWith("Version ") }.performClick()
+                }
+                assertTrue(SteeringProfiles.developerUnlocked(activity))
+            }
             ReflectionHelpers.callInstanceMethod<Unit>(activity, "chooseReportDestination")
             val deadline = System.nanoTime() + 5_000_000_000L
             while (ShadowAlertDialog.getLatestAlertDialog() == null && System.nanoTime() < deadline) {
@@ -53,6 +71,17 @@ class DiagnosticExportUiTest {
             assertTrue(descendants(saved.window!!.decorView).filterIsInstance<TextView>()
                 .any { it.text.contains(file.absolutePath) })
             assertTrue(file.readText().contains("Android 9 / API 28"))
+            if (!developer) {
+                assertEquals(View.GONE, saved.getButton(android.app.AlertDialog.BUTTON_POSITIVE).visibility)
+                assertEquals(View.VISIBLE, saved.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).visibility)
+                assertFalse(descendants(saved.window!!.decorView).filterIsInstance<TextView>()
+                    .any { it.text.contains("Android 9 / API 28") })
+                ReflectionHelpers.callInstanceMethod<Unit>(activity, "showDiagnosticReport",
+                    ReflectionHelpers.ClassParameter.from(String::class.java, file.readText()))
+                assertSame(saved, ShadowAlertDialog.getLatestAlertDialog())
+                saved.dismiss()
+                return
+            }
             saved.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
             shadowOf(Looper.getMainLooper()).idle()
             val viewer = ShadowAlertDialog.getLatestAlertDialog()
