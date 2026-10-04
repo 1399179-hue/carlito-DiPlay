@@ -113,13 +113,7 @@ class CarPlayHostActivity : ComponentActivity() {
             appendLog("Audio Opus not advertised for wired CarPlay; requesting PCM audio")
             return false
         }
-        val decoder = try {
-            MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_AUDIO_OPUS)
-        } catch (error: Exception) {
-            appendLog("Audio Opus decoder unavailable; requesting PCM guidance (${error.javaClass.simpleName})")
-            return false
-        }
-        runCatching { decoder.release() }
+        appendLog("Audio Opus enabled for wireless CarPlay through the bundled software codec")
         return true
     }
     private data class CarIconSelection(val icons: List<AirPlayIcon>, val statusRes: Int)
