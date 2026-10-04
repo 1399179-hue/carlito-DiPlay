@@ -5,6 +5,8 @@
 - Restore wireless CarPlay sound on KX11 head units while keeping the proven wired audio path.
 - Recognize the hotspot interface used by Android 9 KX11 head units so wireless CarPlay can leave the preparation screen.
 - Leave direct steering-button compatibility off by default on Android 9 KX11 head units to avoid playback-control conflicts; it remains available in settings.
+- Restore music volume after a CarPlay call ends on KX11 head units.
+- Keep HUD guidance inside the selected screen when its display mode changes, follow the same named screen after a restart, and add a HUD content-size choice.
 
 # DiPlay 0.2.11 — 2026-10-03
 

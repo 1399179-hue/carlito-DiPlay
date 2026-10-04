@@ -577,8 +577,10 @@
     <string name="geely_hud_navigation_description">在所选副屏显示下一步方向、距离和道路名称。首次使用时请允许显示在其他应用上层。</string>
     <string name="geely_hud_projection_screen">HUD 投影屏幕</string>
     <string name="geely_hud_projection_auto">自动选择</string>
-    <string name="geely_hud_projection_display">%1$s · %2$dx%3$d · ID %4$d</string>
+    <string name="geely_hud_projection_display">%1$s · %2$dx%3$d</string>
     <string name="geely_hud_no_projection_display">未检测到可用副屏。请先在车机中开启 HUD 投影，再返回此页面。</string>
+    <string name="geely_hud_content_size">HUD 内容大小</string>
+    <string name="geely_hud_content_size_option">%1$d%%</string>
     <string name="geely_steering_wheel">按键兼容模式</string>
     <string name="geely_steering_wheel_description">按键识别无法使用时，可尝试此模式来控制播放和打开 Siri。</string>
     <string name="steering_identification">按键识别</string>

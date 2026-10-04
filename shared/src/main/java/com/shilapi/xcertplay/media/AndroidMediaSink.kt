@@ -95,6 +95,16 @@ internal class AudioFocusCoordinator(
     }
 
     @Synchronized
+    fun onCommunicationEnded() {
+        if (closed) return
+        mediaSuppressed = false
+        focusVolume = FULL_VOLUME
+        refreshRequest()
+        if (requestedChannel == AudioChannel.MEDIA) requestCurrentFocus()
+        applyVolumes()
+    }
+
+    @Synchronized
     fun close() {
         closed = true
         requestGeneration++
@@ -225,6 +235,7 @@ class AndroidMediaSink(
     private val surfaces = ConcurrentHashMap<Int, Surface>()
     private val videoDecoders = ConcurrentHashMap<Int, VideoDecoder>()
     private val mediaAudioTypes = mutableSetOf<AudioStreamId>()
+    private val telephonyAudioTypes = mutableSetOf<AudioStreamId>()
     private val audioRenderers = ConcurrentHashMap<AudioStreamId, AudioRenderer>()
     private val microphoneUplinks = ConcurrentHashMap<AudioStreamId, MicrophoneUplink>()
     private val audioModeLock = Any()
@@ -338,6 +349,9 @@ class AndroidMediaSink(
     override fun onAudioStarted(id: AudioStreamId, format: AudioFormat, firstSample: Int) {
         audioRenderer(id, format).start()
         if (format.audioType == "media") updateMediaAudio(id, true)
+        if (format.audioType == "telephony") synchronized(telephonyAudioTypes) {
+            telephonyAudioTypes.add(id)
+        }
     }
 
     override fun onAudioRtp(id: AudioStreamId, format: AudioFormat, rtp: ByteArray, sample: Int) {
@@ -347,6 +361,14 @@ class AndroidMediaSink(
     override fun onAudioStopped(id: AudioStreamId) {
         audioRenderers.remove(id)?.close()
         updateMediaAudio(id, false)
+        val callEnded = synchronized(telephonyAudioTypes) {
+            telephonyAudioTypes.remove(id) && telephonyAudioTypes.isEmpty()
+        }
+        if (callEnded) {
+            restoreAudioMode(null)
+            audioFocusCoordinator.onCommunicationEnded()
+            runCatching { onAudioDiagnostic("Audio: communication ended; media route restored") }
+        }
     }
 
     private fun updateMediaAudio(id: AudioStreamId, active: Boolean) {
@@ -368,7 +390,7 @@ class AndroidMediaSink(
             }
             if (!uplink.start()) {
                 microphoneUplinks.remove(id, uplink)
-                restoreAudioMode(id)
+                if (restoreAudioMode(id)) audioFocusCoordinator.onCommunicationEnded()
             }
         } catch (error: Exception) {
             Log.e("xcertplay-usb", "microphone start failed stream=$id", error)
@@ -381,7 +403,7 @@ class AndroidMediaSink(
         try {
             microphoneUplinks.remove(id)?.close()
         } finally {
-            restoreAudioMode(id)
+            if (restoreAudioMode(id)) audioFocusCoordinator.onCommunicationEnded()
         }
     }
 
@@ -397,11 +419,11 @@ class AndroidMediaSink(
         }
     }
 
-    private fun restoreAudioMode(id: AudioStreamId?) {
-        val manager = audioManager ?: return
-        synchronized(audioModeLock) {
-            val active = communicationModeStream ?: return
-            if (id != null && id != active) return
+    private fun restoreAudioMode(id: AudioStreamId?): Boolean {
+        val manager = audioManager ?: return false
+        return synchronized(audioModeLock) {
+            val active = communicationModeStream ?: return@synchronized false
+            if (id != null && id != active) return@synchronized false
             communicationModeStream = null
             try {
                 manager.mode = savedAudioMode
@@ -409,6 +431,7 @@ class AndroidMediaSink(
             } catch (error: RuntimeException) {
                 Log.w("xcertplay-usb", "could not restore audio mode $savedAudioMode", error)
             }
+            true
         }
     }
 
@@ -431,6 +454,7 @@ class AndroidMediaSink(
         recoveryExecutor.shutdownNow()
         audioRenderers.values.forEach(AudioRenderer::close)
         audioRenderers.clear()
+        synchronized(telephonyAudioTypes) { telephonyAudioTypes.clear() }
         val hadMedia = synchronized(mediaAudioTypes) { mediaAudioTypes.isNotEmpty().also { mediaAudioTypes.clear() } }
         if (hadMedia) onMediaAudioChanged(false)
         try {
