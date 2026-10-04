@@ -7,6 +7,8 @@
 - Leave direct steering-button compatibility off by default on Android 9 KX11 head units to avoid playback-control conflicts; it remains available in settings.
 - Restore music volume after a CarPlay call ends on KX11 head units.
 - Keep HUD guidance inside the selected screen when its display mode changes, follow the same named screen after a restart, and add a HUD content-size choice.
+- Use the car's current hotspot password on Android 9 when the system makes it available, so wireless CarPlay does not keep retrying with outdated saved details.
+- Prefer the hotspot's IPv4 connection on older Geely head units and recognize steering-button press and release events on more Geely models.
 
 # DiPlay 0.2.11 — 2026-10-03
 
