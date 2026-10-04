@@ -1,0 +1,51 @@
+# DiPlay 0.2.12 — 2026-10-05 更新
+
+## 本次更新
+
+- 新增自动无线连接：优先使用车机当前已开启的热点，无法使用时自动尝试其他兼容方式。
+- Android 9 车机可在系统允许时读取当前热点名称和密码，避免保存的旧密码导致反复连接失败。
+- 新增“同一 Wi-Fi”连接方式，车机与 iPhone 可通过同一路由器或便携热点连接。
+- 改善无线连接准备和重试，减少热点已经开启却一直停在准备界面的情况。
+- 改善 Wi-Fi Direct 连接稳定性，并保留首选信道设置。
+- 改善 iPhone USB 接入和授权提示识别，避免误操作无关窗口。
+- 改善分屏、短屏和桌面卡片中的画面比例、触控位置与系统栏显示。
+- 新增跟随系统、光线、固定日间和固定夜间的 CarPlay 外观模式。
+- 自定义分辨率现支持 30%–160%，并会在车机不支持时自动回到合适的显示比例。
+- 增加方向盘控制仪表地图缩放和主屏焦点移动的可选功能。
+- 改善仪表转向卡片、歌曲显示和专辑封面的更新与恢复。
+- 诊断报告可在下载目录不可用时继续保存，并提供查看和分享入口。
+
+## 吉利车机适配
+
+- 改善更多老款吉利车机的热点识别，优先使用更兼容的网络地址。
+- 方向盘按键识别可学习更多 OneOS 车机上报的按键，并正确区分按下与松开。
+- 保留吉利车机的音乐、导航、通话和语音助手音频切换，以及蓝牙音乐交接。
+- 保留 G636、FX11、KX11 的原车方向盘控制、HUD 副屏选择和自定义返回桌面图标。
+- 用户可填写问题说明并主动将脱敏诊断报告上传云端。
+
+同一 Wi-Fi 连接需要路由器允许设备互相访问。HUD、原车音频和方向盘功能取决于车机开放的能力；升级后无需卸载旧版本。
+
+## What’s new
+
+- Add automatic wireless connection that first uses an active head-unit hotspot, then tries other compatible connection methods when needed.
+- On Android 9 head units, use the current hotspot name and password when the system makes them available, avoiding retries with outdated saved details.
+- Add Same Wi-Fi connection through a shared router or portable hotspot.
+- Improve wireless preparation and bounded recovery when a hotspot is already on but CarPlay remains on the preparation screen.
+- Improve Wi-Fi Direct reliability while retaining the preferred-channel setting.
+- Improve iPhone USB attachment and permission-prompt matching without accepting unrelated dialogs.
+- Improve video proportions, touch alignment and system bars in split screen, compact layouts and launcher cards.
+- Add system, ambient-light, fixed-day and fixed-night CarPlay appearance modes.
+- Allow custom resolution from 30% to 160%, with a compatible fallback when the head unit cannot use the requested size.
+- Add optional steering-wheel controls for dashboard-map zoom and main-screen focus movement.
+- Improve dashboard turn cards, song display and album-art continuity.
+- Keep diagnostic reports available when the normal Downloads location cannot be used, with View and Share actions.
+
+## Geely adaptation
+
+- Improve hotspot detection on more legacy Geely head units and prefer the more compatible network address.
+- Let steering-button identification learn more OneOS key codes while correctly matching press and release events.
+- Retain Geely audio switching for music, guidance, calls and the voice assistant, including Bluetooth music handoff.
+- Retain factory steering controls, HUD display selection and the custom CarPlay home icon on G636, FX11 and KX11.
+- Let users describe a problem and explicitly upload a redacted diagnostic report to the cloud.
+
+Same Wi-Fi requires the router to allow communication between connected devices. HUD, factory audio and steering controls depend on capabilities exposed by the head unit. The update can be installed over the previous version.
