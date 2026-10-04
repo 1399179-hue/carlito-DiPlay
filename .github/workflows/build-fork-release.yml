@@ -60,7 +60,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: generated-keystore-store-in-secrets
-          path: diplay-release.jks
+          path: ${{ runner.temp }}/diplay-release.jks
           if-no-files-found: error
 
       - name: Prepare CarPlay authentication assets
