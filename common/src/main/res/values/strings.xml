@@ -147,7 +147,7 @@
     <string name="choose_iphone">Choose iPhone</string>
     <string name="choose_location">Choose location</string>
     <string name="choose_save_location">Choose save location</string>
-    <string name="choose_where_to_save_your_report">Choose where to save your report.\u0020</string>
+    <string name="choose_where_to_save_your_report">Choose where to save your report. If the file picker is unavailable, DiPlay saves it in the app.\u0020</string>
     <string name="choose_your_iphone">Choose your iPhone</string>
     <string name="close">Close</string>
     <string name="cluster_map_size">Dashboard map size</string>
@@ -617,4 +617,7 @@
     <string name="report_upload_failed_message">Check the head unit’s internet connection and try again.</string>
     <string name="retry_report_upload">Try again</string>
     <string name="report_too_large_message">This report is larger than 1 MiB. Save it locally and share it manually.</string>
+    <string name="diagnostic_report_saved_in_app">Your report was saved privately in DiPlay because a public save location was unavailable. Share it or view it here. Nothing is sent automatically.</string>
+    <string name="view_diagnostic_report">View report</string>
+    <string name="diagnostic_report_copy_hint">Touch and hold the report text to select and copy it. You can use this if no sharing app is available.</string>
 </resources>
