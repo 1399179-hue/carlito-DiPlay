@@ -681,7 +681,8 @@ class DiPlayActivity : ComponentActivity() {
                 val savedDisplayId = AirPlayPersistence.loadGeelyHudDisplayId(this)
                 val savedDisplayName = AirPlayPersistence.loadGeelyHudDisplayName(this)
                 val selectedDisplayIndex = hudDisplays.indexOfFirst {
-                    it.id == savedDisplayId || it.name == savedDisplayName
+                    (it.id == savedDisplayId && (savedDisplayName == null || it.name == savedDisplayName)) ||
+                        it.name == savedDisplayName
                 }
                 val displayOptions = listOf(getString(R.string.geely_hud_projection_auto)) +
                     hudDisplays.map {
@@ -690,7 +691,6 @@ class DiPlayActivity : ComponentActivity() {
                             it.name,
                             it.width,
                             it.height,
-                            it.id,
                         )
                     }
                 choice(
@@ -701,6 +701,15 @@ class DiPlayActivity : ComponentActivity() {
                     reconnects = false,
                 ) { index -> GeelyHudProjection.selectDisplay(this, hudDisplays.getOrNull(index - 1)) }
             }
+            val hudScales = AirPlayPersistence.geelyHudScalePercents
+            val hudScale = AirPlayPersistence.loadGeelyHudScalePercent(this)
+            choice(
+                card,
+                getString(R.string.geely_hud_content_size),
+                hudScales.map { getString(R.string.geely_hud_content_size_option, it) },
+                hudScales.indexOf(hudScale).coerceAtLeast(0),
+                reconnects = false,
+            ) { index -> GeelyHudProjection.setScale(this, hudScales[index]) }
             toggle(
                 card,
                 getString(R.string.geely_steering_wheel),

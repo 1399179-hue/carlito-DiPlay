@@ -70,6 +70,7 @@ object AirPlayPersistence {
     private const val KEY_GEELY_HUD_ENABLED = "geely_hud_enabled"
     private const val KEY_GEELY_HUD_DISPLAY_ID = "geely_hud_display_id"
     private const val KEY_GEELY_HUD_DISPLAY_NAME = "geely_hud_display_name"
+    private const val KEY_GEELY_HUD_SCALE_PERCENT = "geely_hud_scale_percent"
     private const val KEY_GEELY_STEERING_ENABLED = "geely_steering_enabled"
     private const val KEY_ADB_CLUSTER_ACTIVITY = "adb_cluster_activity_enabled"
     private const val KEY_CENTER_MAP_OVERLAY = "center_map_overlay"
@@ -586,6 +587,20 @@ object AirPlayPersistence {
             }
             .apply()
     }
+
+    fun loadGeelyHudScalePercent(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_GEELY_HUD_SCALE_PERCENT, 85)
+            .takeIf { it in geelyHudScalePercents } ?: 85
+
+    fun saveGeelyHudScalePercent(context: Context, percent: Int) {
+        require(percent in geelyHudScalePercents)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_GEELY_HUD_SCALE_PERCENT, percent)
+            .apply()
+    }
+
+    val geelyHudScalePercents = listOf(70, 85, 100)
 
     fun loadGeelySteeringEnabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

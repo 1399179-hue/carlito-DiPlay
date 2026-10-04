@@ -26,8 +26,9 @@ import java.util.concurrent.TimeUnit
  *
  * The hotspot remains owned by the system. This manager only locates its interface and reads the
  * channel/security data that the public Android APIs expose. Some vendors hide the current SoftAP
- * configuration, in which case the caller-supplied credentials remain authoritative and the iAP2
- * channel is reported as zero ("auto").
+ * configuration, in which case the caller-supplied credentials remain the fallback and the iAP2
+ * channel is reported as zero ("auto"). When Android exposes the live password, it takes precedence
+ * so a stale saved password cannot keep the iPhone off the active hotspot.
  */
 class ManualHotspotManager(
     context: Context,
@@ -104,12 +105,19 @@ class ManualHotspotManager(
                     else -> null
                 }
                 val security = apConfiguration?.security ?: expectedSecurity
+                val systemPassphrase = apConfiguration?.passphrase
+                    ?.takeIf { it.length in 8..63 && '\u0000' !in it }
+                val effectivePassphrase = when (security) {
+                    Iap2WirelessSecurity.NONE -> ""
+                    else -> systemPassphrase ?: passphrase
+                }
                 onDiagnostic("Manual hotspot configReadable=${apConfiguration != null} " +
                     "security=$security channelKnown=${channel > 0} " +
+                    "credentialsSource=${if (systemPassphrase != null) "system" else "saved"} " +
                     "hardwareAddressKnown=${localInterface.hardwareAddress != null} iface=${localInterface.name} " +
                     "tethered=${localInterface.tethered} " +
                     "family=${if (localInterface.hostAddress is Inet6Address) "IPv6" else "IPv4"}")
-                if (security != Iap2WirelessSecurity.NONE && passphrase.isEmpty()) {
+                if (security != Iap2WirelessSecurity.NONE && effectivePassphrase.isEmpty()) {
                     throw IOException("Manual hotspot is secured but no passphrase was provided")
                 }
 
@@ -124,7 +132,7 @@ class ManualHotspotManager(
                 val observedBandLabel = wifiBandLabel(apConfiguration?.band)
                 return WirelessHotspotInfo(
                     ssid = expectedSsid,
-                    passphrase = passphrase,
+                    passphrase = effectivePassphrase,
                     security = security,
                     channel = channel,
                     frequencyMHz = frequencyMHz,
@@ -260,6 +268,7 @@ class ManualHotspotManager(
             else -> 0
         }
         if (address is Inet4Address) {
+            score += 200
             val bytes = address.address
             when {
                 bytes[0] == 192.toByte() && bytes[1] == 168.toByte() -> score += 30
@@ -345,6 +354,7 @@ class ManualHotspotManager(
                 channel = channel,
                 frequencyMHz = wifiChannelToFrequencyMhz(channel, band),
                 security = mapSoftApSecurity(configuration.securityType),
+                passphrase = configuration.passphrase,
             )
         } catch (_: Throwable) {
             null
@@ -374,6 +384,7 @@ class ManualHotspotManager(
                 channel = channel,
                 frequencyMHz = wifiChannelToFrequencyMhz(channel, band),
                 security = mapWifiConfigurationSecurity(configuration),
+                passphrase = unquote(configuration.preSharedKey),
             )
         } catch (_: Throwable) {
             null
@@ -448,6 +459,7 @@ class ManualHotspotManager(
         val channel: Int,
         val frequencyMHz: Int?,
         val security: Iap2WirelessSecurity,
+        val passphrase: String?,
     )
 
     private class LocalHotspotInterface(
