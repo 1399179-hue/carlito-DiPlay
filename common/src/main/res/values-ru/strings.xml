@@ -191,6 +191,8 @@
     <string name="follow_instrument_theme_and_map_card">Следовать теме приборов и карточке карты</string>
     <string name="frame_rate">Частота кадров</string>
     <string name="full_screen">Полный экран</string>
+    <string name="adapt_pip_resolution">Адаптация разрешения в многооконном режиме</string>
+    <string name="adapt_pip_resolution_description">Переподключает CarPlay для адаптации разрешения к пропорциям окна или PiP. Оставьте выключенным для мгновенного аппаратного масштабирования GPU.</string>
     <string name="fullscreen">Полноэкранный режим</string>
     <string name="getting_carplay_ready">Подготовка CarPlay…</string>
     <string name="got_it">Понятно</string>
@@ -506,6 +508,13 @@
     <string name="launcher_map_sharing">Делиться живой картой с другими лаунчерами</string>
     <string name="launcher_map_sharing_description">Лаунчеры с поддержкой DiPlay смогут показывать живую карту приборной панели на своём главном экране. Выключено по умолчанию, потому что тогда карту сможет запросить любое приложение на головном устройстве. Подробнее: docs/LAUNCHER_INTEGRATION.md.</string>
     <string name="turn_card_overlay_size">Размер собственной карточки</string>
+    <string name="turn_card_overlay_opacity">Прозрачность собственной карточки</string>
+    <string name="turn_card_overlay_opacity_option">%1$d %%</string>
+    <string name="turn_card_overlay_size_option">%1$d %%</string>
+    <string name="turn_card_info_arrival">Прибытие %1$s</string>
+    <string name="turn_card_info_duration_hm">%1$dч %2$dмин</string>
+    <string name="turn_card_info_duration_m">%1$dмин</string>
+    <string name="turn_card_info_km">%1$.1f км</string>
     <string name="turn_card_overlay_horizontal">Собственная карточка · влево / вправо</string>
     <string name="turn_card_overlay_vertical">Собственная карточка · вверх / вниз</string>
     <string name="turn_card_overlay_small">Маленькая</string>
