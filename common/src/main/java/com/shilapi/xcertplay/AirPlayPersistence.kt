@@ -120,11 +120,15 @@ object AirPlayPersistence {
 
     fun loadDisplayScalePercent(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt("display_scale_percent", loadDisplayScaleTenths(context) * 10).coerceIn(30, 100)
+            .getInt("display_scale_percent", loadDisplayScaleTenths(context) * 10)
+            .coerceIn(CarPlayDisplayScale.MIN_PERCENT, CarPlayDisplayScale.MAX_PERCENT)
 
     fun saveDisplayScalePercent(context: Context, percent: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putInt("display_scale_percent", percent.coerceIn(30, 100)).apply()
+            .putInt(
+                "display_scale_percent",
+                percent.coerceIn(CarPlayDisplayScale.MIN_PERCENT, CarPlayDisplayScale.MAX_PERCENT),
+            ).apply()
     }
     /** Applied by the CarPlay host so overlay position/size updates without reconnecting. */
     @Volatile var overlaySettingsListener: (() -> Unit)? = null
@@ -323,6 +327,20 @@ object AirPlayPersistence {
         require(WifiP2pChannels.isValid(channel))
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putInt(KEY_WIFI_P2P_PREFERRED_CHANNEL, channel).apply()
+    }
+
+    fun loadExistingWifiSsid(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString("existing_wifi_ssid", "").orEmpty()
+
+    fun loadExistingWifiPassphrase(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString("existing_wifi_passphrase", "").orEmpty()
+
+    fun saveExistingWifiCredentials(context: Context, ssid: String, passphrase: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("existing_wifi_ssid", ssid)
+            .putString("existing_wifi_passphrase", passphrase).apply()
     }
 
     fun loadManualHotspotSsid(context: Context): String =

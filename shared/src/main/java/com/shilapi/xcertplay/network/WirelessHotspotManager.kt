@@ -4,20 +4,14 @@ import com.shilapi.xcertplay.transport.Iap2WirelessSecurity
 import java.io.Closeable
 import java.net.InetAddress
 
-data class WirelessLinkCandidate(
-    val interfaceName: String?,
-    val hostAddress: InetAddress,
-    val bssid: String?,
-    val priority: Int = 0,
-)
-
 enum class WirelessHotspotBackend(val label: String) {
     WIFI_P2P("Wi-Fi P2P"),
     LOCAL_ONLY_HOTSPOT("LocalOnlyHotspot"),
     MANUAL_HOTSPOT("Manual hotspot"),
+    EXISTING_WIFI("Existing Wi-Fi / Same LAN"),
 }
 
-/** The live Wi-Fi credentials and interface details for one wireless CarPlay hotspot. */
+/** The live Wi-Fi credentials and interface details for a wireless CarPlay network. */
 class WirelessHotspotInfo(
     val ssid: String,
     val passphrase: String,
@@ -29,33 +23,31 @@ class WirelessHotspotInfo(
     val hostAddress: InetAddress?,
     val bandLabel: String,
     val backend: WirelessHotspotBackend,
-    val linkCandidates: List<WirelessLinkCandidate> = emptyList(),
+    /** Addresses on the selected interface that discovery and TCP must both serve. */
+    val hostAddresses: List<InetAddress> = listOfNotNull(hostAddress),
+    /** Wi-Fi AP hint for 0x5703; independent of the receiver's AirPlay identity in [bssid]. */
+    val accessPointBssid: ByteArray? = null,
 ) {
-    val links: List<WirelessLinkCandidate>
-        get() = linkCandidates.ifEmpty {
-            listOfNotNull(hostAddress?.let { WirelessLinkCandidate(interfaceName, it, bssid) })
-        }.distinctBy { it.hostAddress.hostAddress }
-
     override fun toString(): String =
         "WirelessHotspotInfo(backend=${backend.label}, ssid='$ssid', " +
             "passphrase=<redacted>, security=$security, channel=$channel, " +
             "frequencyMHz=$frequencyMHz, bssid='$bssid', interfaceName=$interfaceName, " +
-            "hostAddress=$hostAddress, candidateCount=${links.size}, bandLabel='$bandLabel')"
+            "hostAddress=$hostAddress, bandLabel='$bandLabel')"
 }
 
-/** Owns one Android Wi-Fi group and all resources needed to keep it alive. */
+/** Prepares a wireless network and owns only the resources acquired by this manager. */
 interface WirelessHotspotManager : Closeable {
     /**
-     * Starts a hotspot and waits up to [timeoutMillis] for its live configuration and AP
-     * interface. Implementations must not be called on the main thread.
+     * Creates or attaches to a wireless network and waits up to [timeoutMillis] for its live
+     * configuration and interface. Implementations must not be called on the main thread.
      */
     fun start(timeoutMillis: Long): WirelessHotspotInfo
 
+    /** 发布之前确认本轮选定的接口和地址仍可用。 */
+    fun validateReady() {}
+
     /** The authenticated wireless session has rendered CarPlay; AP creation alone is insufficient. */
     fun onCarPlayConfirmed() {}
-
-    /** Records which candidate accepted the iPhone's AirPlay connection. */
-    fun onLinkAccepted(address: InetAddress) {}
 
     /** Counts reported by the framework, when available; never contains station identities. */
     fun connectionDiagnosticSnapshot(): String = "association=not_exposed"

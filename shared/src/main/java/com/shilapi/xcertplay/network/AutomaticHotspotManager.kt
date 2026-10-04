@@ -6,7 +6,6 @@ import android.os.Looper
 import com.shilapi.xcertplay.orchestration.ManualHotspotBand
 import com.shilapi.xcertplay.orchestration.ManualHotspotSecurity
 import java.io.IOException
-import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 /** Selects and remembers the first wireless link that the current head unit can provide. */
@@ -97,8 +96,8 @@ class AutomaticHotspotManager(
         }
     }
 
-    override fun onLinkAccepted(address: InetAddress) {
-        activeManager?.onLinkAccepted(address)
+    override fun validateReady() {
+        activeManager?.validateReady()
     }
 
     override fun connectionDiagnosticSnapshot(): String =
@@ -127,6 +126,7 @@ class AutomaticHotspotManager(
                 security = manualSecurity,
                 preferSystemConfiguration = true,
                 onDiagnostic = onDiagnostic,
+                isCancelled = { closed },
             )
         }
         val local = Attempt(WirelessHotspotBackend.LOCAL_ONLY_HOTSPOT, LOCAL_HOTSPOT_MILLIS) {

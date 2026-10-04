@@ -23,6 +23,7 @@ enum class WirelessHotspotMode {
     WIFI_P2P,
     LOCAL_ONLY_HOTSPOT,
     MANUAL,
+    EXISTING_WIFI,
 }
 
 enum class ManualHotspotBand {
@@ -66,6 +67,8 @@ class CarPlayRuntimeConfig(
     val wirelessBluetoothDeviceAddress: String? = null,
     val locationReportingEnabled: Boolean = false,
     val wifiP2pPreferredChannel: Int = WifiP2pChannels.AUTO,
+    val existingWifiSsid: String = "",
+    val existingWifiPassphrase: String = "",
 ) {
     init {
         require(iphoneDevices.all { it.vendorId == APPLE_VENDOR_ID }) {
@@ -97,6 +100,11 @@ class CarPlayRuntimeConfig(
             "Remote MFi token must not contain U+0000"
         }
         // Only a wireless session starts the hotspot; a USB session must not fail on unused settings.
+        if (transport == CarPlayTransport.WIRELESS && wirelessHotspotMode == WirelessHotspotMode.EXISTING_WIFI) {
+            require(ManualHotspotValidation.error(existingWifiSsid, existingWifiPassphrase) == null) {
+                "Existing Wi-Fi requires an SSID of at most 32 UTF-8 bytes and an empty (open) or 8–63 character WPA2 password"
+            }
+        }
         if (transport == CarPlayTransport.WIRELESS &&
             (wirelessHotspotMode == WirelessHotspotMode.AUTOMATIC ||
                 wirelessHotspotMode == WirelessHotspotMode.WIFI_P2P)
