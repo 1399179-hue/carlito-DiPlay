@@ -191,7 +191,7 @@
     <string name="default_icon">Default icon</string>
     <string name="default_placeholder_icon">Default placeholder icon</string>
     <string name="diagnostic_report_saved">Diagnostic report saved</string>
-    <string name="diagnostics">Diagnostics</string>
+    <string name="diagnostics">Collect logs</string>
     <string name="diplay">DiPlay</string>
     <string name="discard_changes_and_exit_settings">Discard changes and exit settings</string>
     <string name="disconnect">Disconnect</string>
@@ -267,7 +267,7 @@
     <string name="navigation_stream_type">Navigation stream type</string>
     <string name="nearby_devices">Nearby devices</string>
     <string name="nearby_devices_connects_your_iphone_microphone_enables_sir">Nearby devices connects your iPhone. Microphone enables Siri and calls. Older Android versions also require Location for wireless setup. USB mode may ask for a local VPN connection.</string>
-    <string name="nothing_is_sent_automatically_protocol_payloads_and_creden">Nothing is sent automatically. Protocol payloads and credentials are excluded.</string>
+    <string name="nothing_is_sent_automatically_protocol_payloads_and_creden"> Reports are saved only when requested; sensitive information is excluded.</string>
     <string name="oem_label">OEM label</string>
     <string name="on_your_iphone_open_settings_bluetooth_and_pair_with_the_c">On your iPhone, open Settings → Bluetooth and pair with the car. Then return to DiPlay and choose Connect phone.</string>
     <string name="one_time_setup_on_this_car">One-time setup on this car</string>
@@ -660,6 +660,7 @@
     <string name="diagnostic_report_saved_in_app">Your report was saved privately in DiPlay because a public save location was unavailable. Share it or view it here. Nothing is sent automatically.</string>
     <string name="diagnostic_report_saved_to_path">Your report was saved to:\n%1$s\n\nYou can also share it or view it here. Nothing is sent automatically.</string>
     <string name="view_diagnostic_report">View report</string>
+    <string name="report_share_failed">Could not open sharing. Try again or share the saved report from your file manager.</string>
     <string name="diagnostic_report_copy_hint">Touch and hold the report text to select and copy it. You can use this if no sharing app is available.</string>
     <string name="wheel_map_zoom">Zoom the dashboard map with the wheel</string>
     <string name="wheel_map_zoom_description">BYD\'s custom key switches the volume keys between volume and dashboard map zoom while the dashboard shows the CarPlay map. A call always keeps the volume. On some cars the console volume sends the same keys, so it zooms too while zoom is on. Uses DiPlay\'s wheel key service; the note on the dashboard needs ADB.</string>

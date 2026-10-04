@@ -185,7 +185,7 @@
     <string name="default_icon">默认图标</string>
     <string name="default_placeholder_icon">默认占位图标</string>
     <string name="diagnostic_report_saved">诊断报告已保存</string>
-    <string name="diagnostics">诊断</string>
+    <string name="diagnostics">收集日志</string>
     <string name="diplay">DiPlay</string>
     <string name="discard_changes_and_exit_settings">放弃更改并退出设置</string>
     <string name="disconnect">断开连接</string>
@@ -266,7 +266,7 @@
     <string name="navigation_stream_type">导航音频流类型</string>
     <string name="nearby_devices">附近的设备</string>
     <string name="nearby_devices_connects_your_iphone_microphone_enables_sir">“附近的设备”权限用于连接 iPhone；麦克风权限用于 Siri 和通话。较旧的 Android 版本还需要位置权限来设置无线连接。USB 模式可能会请求建立本地 VPN 连接。</string>
-    <string name="nothing_is_sent_automatically_protocol_payloads_and_creden">报告不会自动发送，不包含协议数据和凭据。</string>
+    <string name="nothing_is_sent_automatically_protocol_payloads_and_creden">仅在操作后保存，报告不包含敏感信息。</string>
     <string name="oem_label">OEM 标签</string>
     <string name="on_your_iphone_open_settings_bluetooth_and_pair_with_the_c">在 iPhone 上打开“设置 → 蓝牙”并与车机配对。然后返回 DiPlay，点击“连接手机”。</string>
     <string name="one_time_setup_on_this_car">在此车机上一次性设置</string>
@@ -660,6 +660,7 @@
     <string name="diagnostic_report_saved_in_app">由于公共保存位置不可用，报告已私密保存到 DiPlay。您可以在此分享或查看报告。不会自动发送任何内容。</string>
     <string name="diagnostic_report_saved_to_path">报告已保存到：\n%1$s\n\n您也可以在此分享或查看报告。不会自动发送任何内容。</string>
     <string name="view_diagnostic_report">查看报告</string>
+    <string name="report_share_failed">无法打开分享，请重试，或在文件管理器中分享已保存的报告。</string>
     <string name="diagnostic_report_copy_hint">长按报告文本即可选择并复制。如果没有可用的分享应用，可以使用此方式。</string>
     <string name="wheel_map_zoom">用方向盘按键缩放仪表盘地图</string>
     <string name="wheel_map_zoom_description">仪表盘显示 CarPlay 地图时，比亚迪自定义按键可在音量和仪表盘地图缩放之间切换音量键。通话时按键始终调节音量。部分车型的中控音量与方向盘发送相同按键，因此缩放模式下它也会缩放地图。使用 DiPlay 方向盘按键服务；仪表盘上的提示需要 ADB。</string>
