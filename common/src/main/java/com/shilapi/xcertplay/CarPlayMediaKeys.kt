@@ -168,9 +168,11 @@ internal object CarPlayMediaKeys {
     }
 
     private fun syncGeelyInputLocked() {
-        val enabled = controller != null && learning == null && steeringProfile == null &&
-            appContext?.let(AirPlayPersistence::loadGeelySteeringEnabled) == true
-        if (!enabled) {
+        val profileUsesOneOs = steeringProfile?.bindings?.any { it.source == "oneos" } == true
+        val useGeelyInput = learning != null || controller != null &&
+            (profileUsesOneOs || steeringProfile == null &&
+                appContext?.let(AirPlayPersistence::loadGeelySteeringEnabled) == true)
+        if (!useGeelyInput) {
             geelyInput?.close()
             geelyInput = null
         } else if (geelyInput == null) {
@@ -180,7 +182,7 @@ internal object CarPlayMediaKeys {
         }
         keyLogMonitor?.close(); keyLogMonitor = null
         val generation = ++monitorGeneration
-        val inputBindings = steeringProfile?.bindings ?: if (!enabled && appContext?.let(GeelyFactoryCarPlay::load) != null) {
+        val inputBindings = steeringProfile?.bindings?.filterNot { it.source == "oneos" } ?: if (!useGeelyInput && appContext?.let(GeelyFactoryCarPlay::load) != null) {
             // HardKeyModel in the factory APK logs this press even without a connected iPhone.
             listOf(SteeringBinding("siri", 200231, 0, "logcat", "HardKeyModel"))
         } else emptyList()
@@ -194,7 +196,11 @@ internal object CarPlayMediaKeys {
 
     private fun onGeelySteeringKey(event: GeelySteeringKeyEvent) {
         mainHandler.post {
-            if (learning != null || steeringProfile != null) return@post
+            if (learning != null || steeringProfile?.bindings?.any { it.source == "oneos" } == true) {
+                onObservedKey(SteeringObservedKey(event.keyCode, event.action, "oneos"))
+                return@post
+            }
+            if (steeringProfile != null) return@post
             val operation = when (event.keyCode) {
                 GeelySteeringKeyCodes.MEDIA_PLAY_PAUSE -> "play_pause"
                 GeelySteeringKeyCodes.MEDIA_NEXT, GeelySteeringKeyCodes.SEEK_NEXT -> "next"
@@ -240,7 +246,8 @@ internal object CarPlayMediaKeys {
 
     fun steeringDiagnostics(): String = synchronized(this) {
         val permitted = appContext?.checkSelfPermission(android.Manifest.permission.READ_LOGS) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        "systemLogAccess=$permitted\n" + (keyLogMonitor?.diagnostics() ?: "INACTIVE") + "\n" + observedKeys.joinToString("\n")
+        "systemLogAccess=$permitted\n" + (geelyInput?.diagnostics() ?: "oneOs INACTIVE") + "\n" +
+            (keyLogMonitor?.diagnostics() ?: "logMonitor INACTIVE") + "\n" + observedKeys.joinToString("\n")
     }
 
     private fun onObservedKey(key: SteeringObservedKey) {

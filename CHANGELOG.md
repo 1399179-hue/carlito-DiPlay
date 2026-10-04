@@ -1,5 +1,7 @@
 # DiPlay 0.2.11 — 2026-10-03
 
+- Prefer the hotspot interface reported by Android tethering on legacy head units, fixing KX11 wireless sessions that completed Bluetooth setup but advertised an unreachable local address.
+- Enable direct OneOS steering controls by default on G636, FX11 and KX11 head units, and let button identification use OneOS without log access or a local ADB connection.
 - Fall back to PCM navigation prompts when a head unit cannot create an Opus decoder, fixing silent guidance while media audio continues normally.
 - Let users choose any active secondary display for Geely HUD projection, remember the selected screen, and include HUD screen status in user-submitted diagnostic reports. See [fork update notes](docs/UPDATE-NOTES-0.2.11.md).
 - Add preferred Wi-Fi Direct channel selection for the next connection; Auto remains the default, and manual channel rejection/mismatch reports an error (#175).

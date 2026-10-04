@@ -534,7 +534,8 @@ object AirPlayPersistence {
     }
 
     fun loadGeelySteeringEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_GEELY_STEERING_ENABLED, false)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_GEELY_STEERING_ENABLED, GeelySteeringWheelInputChannel.isKnownGeelyHeadUnit())
 
     fun saveGeelySteeringEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()

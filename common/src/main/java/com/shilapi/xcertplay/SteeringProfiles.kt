@@ -48,7 +48,7 @@ internal data class SteeringBinding(
             }.orEmpty(),
         ).also {
             require(it.operation in operations && it.event in 0..4)
-            require(it.source in listOf("broadcast", "logcat"))
+            require(it.source in listOf("broadcast", "logcat", "oneos"))
             require(it.keyCode in 1..1_000_000 || (it.keyCode == 0 && it.source == "logcat" && it.logContains.isNotEmpty()))
             require(it.source != "logcat" || it.logTag.isNotBlank())
             require(it.logTag.length <= 100 && it.logTag.none(Char::isISOControl))

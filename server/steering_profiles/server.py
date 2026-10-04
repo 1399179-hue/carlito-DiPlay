@@ -70,7 +70,7 @@ def validate_profile(profile):
             raise ValueError("Invalid key code")
         if type(binding["event"]) is not int or not 0 <= binding["event"] <= 4:
             raise ValueError("Invalid button event")
-        if binding["source"] not in ("broadcast", "logcat"):
+        if binding["source"] not in ("broadcast", "logcat", "oneos"):
             raise ValueError("Unsupported input source")
         tag = binding["logTag"]
         if not isinstance(tag, str) or len(tag) > 100 or any(unicodedata.category(c) == "Cc" for c in tag):

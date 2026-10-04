@@ -1,6 +1,6 @@
 # Steering button identification
 
-Open **Settings → Identify steering buttons**. Enter the vehicle model and model year; the head unit model starts from Android's model and can be corrected. Allow button access if requested. Choose play/pause, next track, previous track or Siri, and press that steering button. A complete event fills its mapping automatically. Identification expires after 25 seconds and can be cancelled.
+Open **Settings → Identify steering buttons**. Enter the vehicle model and model year; the head unit model starts from Android's model and can be corrected. Choose play/pause, next track, previous track or Siri, and press that steering button. G636, FX11 and KX11 use the head unit's OneOS button service directly. Other head units may ask for button access. A complete event fills its mapping automatically. Identification expires after 25 seconds and can be cancelled.
 
 **Save and upload to cloud** saves an atomic local JSON profile, reloads the active mapping and schedules upload. One to four actions can be configured. Profiles are named `vehicle_head-unit_firmware.json`; unsafe filename characters are replaced and each segment is limited to 64 UTF-8 bytes. These names describe the actual vehicle and head unit; key values do not identify a vehicle model.
 
@@ -10,7 +10,7 @@ Identifying an already assigned input moves it to the newly chosen operation; al
 
 ## Independent system input
 
-DiPlay runs its own logcat process and owns its broadcast receivers. Identification never learns from GD or OneOS callbacks. The earlier optional Geely listener operates only when no custom profile is active. Learning temporarily suppresses CarPlay commands; stopping it invalidates queued observations from the old monitor.
+On G636, FX11 and KX11, DiPlay first reads supported steering events directly from OneOS and keeps that input active for saved OneOS profiles. This path does not require log access or local ADB. On other head units, DiPlay runs its own logcat process and owns its broadcast receivers. Learning temporarily suppresses CarPlay commands; stopping it invalidates queued observations from the old monitor.
 
 - Only newly emitted log records are processed; historical records and DiPlay's own diagnostic tags are excluded. A failed log stream is reopened. The app does not clear the system log buffer.
 - Numeric or hexadecimal `raw`, `rawKeyCode`, `key`, `keyCode`, `key_code`, `keyId`, `key_id`, `keyValue` and `key_value` fields are recognized. `onKeyDown` and `onKeyUp` messages and named Android `KEYCODE_*` values are supported. Binder transaction `code=` fields are not interpreted as keys. Runtime numeric rules require the saved tag, key and trigger to match.
@@ -46,7 +46,7 @@ Schema version `1`, backend `system_key_events`:
 | `bindings` | One to four unique operations and input signatures |
 | `operation` | `play_pause`, `next`, `previous` or `siri` |
 | `keyCode`, `event` | Observed key and trigger: down `0`, up `1`, single `2`, long `3`, double `4` |
-| `source`, `logTag` | `logcat` with an exact tag, or `broadcast` |
+| `source`, `logTag` | `oneos`, `logcat` with an exact tag, or `broadcast` |
 | `broadcastAction`, `keyExtra`, `eventExtra` | Observed broadcast action and extra names; empty for log rules |
 | `logContains` | Empty for numeric/broadcast rules; stable literal fragments for an explicit log rule |
 

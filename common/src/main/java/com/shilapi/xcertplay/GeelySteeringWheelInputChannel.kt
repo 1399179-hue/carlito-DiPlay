@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Binder
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.IInterface
@@ -50,6 +51,10 @@ internal class GeelySteeringWheelInputChannel(
         private const val TRANSACTION_UNREGISTER = 4
         private const val CONNECT_RETRY_MS = 2_000L
         private const val RAW_GESTURE_WINDOW_MS = 1_500L
+
+        fun isKnownGeelyHeadUnit(): Boolean = Build.MODEL.orEmpty().uppercase().let { model ->
+            model.contains("G636") || model.contains("FX11") || model.contains("KX11")
+        }
     }
 
     private val app = context.applicationContext
@@ -181,6 +186,10 @@ internal class GeelySteeringWheelInputChannel(
             releaseRegisteredLocked()
             unbindLocked()
         }
+    }
+
+    fun diagnostics(): String = synchronized(lock) {
+        "oneOs enabled=$enabled bound=$bound input=${inputManager != null} registered=${registeredKeys.size}"
     }
 
     private fun bindLocked() {

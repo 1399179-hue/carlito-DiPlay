@@ -187,10 +187,6 @@ class SteeringControlsActivity : ComponentActivity() {
     }
 
     private fun identify(operation: String) {
-        if (!SteeringLogAccess.granted(this)) {
-            instruction.setText(R.string.steering_access_needed)
-            return
-        }
         learningOperation = operation
         identifyButtons.forEach { it.enable(false) }
         saveButton.enable(false)
@@ -275,7 +271,9 @@ class SteeringControlsActivity : ComponentActivity() {
 
     private fun updateAccess() {
         if (::accessButton.isInitialized) {
-            accessButton.visibility = if (SteeringLogAccess.granted(this)) View.GONE else View.VISIBLE
+            accessButton.visibility = if (SteeringLogAccess.granted(this) ||
+                GeelySteeringWheelInputChannel.isKnownGeelyHeadUnit()
+            ) View.GONE else View.VISIBLE
             accessButton.enable(!requestingAccess)
         }
     }
