@@ -9,6 +9,8 @@
 - Keep HUD guidance inside the selected screen when its display mode changes, follow the same named screen after a restart, and add a HUD content-size choice.
 - Use the car's current hotspot password on Android 9 when the system makes it available, so wireless CarPlay does not keep retrying with outdated saved details.
 - Prefer the hotspot's IPv4 connection on older Geely head units and recognize steering-button press and release events on more Geely models.
+- Add automatic wireless setup that uses an active car hotspot when available and otherwise prepares a compatible connection with the correct network name and password.
+- Let steering-button identification learn the wider range of key codes reported by OneOS head units.
 
 # DiPlay 0.2.11 — 2026-10-03
 

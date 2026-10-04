@@ -4,6 +4,13 @@ import com.shilapi.xcertplay.transport.Iap2WirelessSecurity
 import java.io.Closeable
 import java.net.InetAddress
 
+data class WirelessLinkCandidate(
+    val interfaceName: String?,
+    val hostAddress: InetAddress,
+    val bssid: String?,
+    val priority: Int = 0,
+)
+
 enum class WirelessHotspotBackend(val label: String) {
     WIFI_P2P("Wi-Fi P2P"),
     LOCAL_ONLY_HOTSPOT("LocalOnlyHotspot"),
@@ -22,12 +29,18 @@ class WirelessHotspotInfo(
     val hostAddress: InetAddress?,
     val bandLabel: String,
     val backend: WirelessHotspotBackend,
+    val linkCandidates: List<WirelessLinkCandidate> = emptyList(),
 ) {
+    val links: List<WirelessLinkCandidate>
+        get() = linkCandidates.ifEmpty {
+            listOfNotNull(hostAddress?.let { WirelessLinkCandidate(interfaceName, it, bssid) })
+        }.distinctBy { it.hostAddress.hostAddress }
+
     override fun toString(): String =
         "WirelessHotspotInfo(backend=${backend.label}, ssid='$ssid', " +
             "passphrase=<redacted>, security=$security, channel=$channel, " +
             "frequencyMHz=$frequencyMHz, bssid='$bssid', interfaceName=$interfaceName, " +
-            "hostAddress=$hostAddress, bandLabel='$bandLabel')"
+            "hostAddress=$hostAddress, candidateCount=${links.size}, bandLabel='$bandLabel')"
 }
 
 /** Owns one Android Wi-Fi group and all resources needed to keep it alive. */
@@ -40,6 +53,9 @@ interface WirelessHotspotManager : Closeable {
 
     /** The authenticated wireless session has rendered CarPlay; AP creation alone is insufficient. */
     fun onCarPlayConfirmed() {}
+
+    /** Records which candidate accepted the iPhone's AirPlay connection. */
+    fun onLinkAccepted(address: InetAddress) {}
 
     /** Counts reported by the framework, when available; never contains station identities. */
     fun connectionDiagnosticSnapshot(): String = "association=not_exposed"

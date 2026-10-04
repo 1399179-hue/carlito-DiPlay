@@ -65,8 +65,7 @@ internal class GeelySteeringWheelInputChannel(
     private val lock = Any()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lastRawUpAt = ConcurrentHashMap<Int, Long>()
-    @Volatile private var requestedKeys = GeelySteeringKeyCodes.supported
-    private var registeredKeys = intArrayOf()
+    @Volatile private var registeredKeys = intArrayOf()
     private var serviceManager: IBinder? = null
     private var inputManager: IBinder? = null
     private var bound = false
@@ -113,8 +112,7 @@ internal class GeelySteeringWheelInputChannel(
                 1 -> {
                     val action = data.readInt()
                     data.readInt() // OneOS soft-key function; the key code identifies the press.
-                    if (rawKeyCode >= GeelySteeringKeyCodes.EXTENDED_KEY_MIN &&
-                        keyCode in requestedKeys &&
+                    if (rawKeyCode in registeredKeys &&
                         (action == GeelySteeringKeyEvent.ACTION_DOWN || action == GeelySteeringKeyEvent.ACTION_UP)
                     ) {
                         if (action == GeelySteeringKeyEvent.ACTION_UP) lastRawUpAt[keyCode] = now
@@ -130,8 +128,7 @@ internal class GeelySteeringWheelInputChannel(
                         else -> null
                     }
                     val rawSequenceRecentlyCompleted = now - (lastRawUpAt[keyCode] ?: 0L) < RAW_GESTURE_WINDOW_MS
-                    if (rawKeyCode >= GeelySteeringKeyCodes.EXTENDED_KEY_MIN &&
-                        keyCode in requestedKeys &&
+                    if (rawKeyCode in registeredKeys &&
                         directAction != null &&
                         !rawSequenceRecentlyCompleted
                     ) {
@@ -296,15 +293,12 @@ internal class GeelySteeringWheelInputChannel(
 }
 
 internal object GeelySteeringKeyCodes {
-    const val EXTENDED_KEY_MIN = 100_000
     const val MEDIA_PLAY_PAUSE = 200_085
     const val MEDIA_NEXT = 200_087
     const val MEDIA_PREVIOUS = 200_088
     const val VOICE_ASSIST = 200_231
     const val SEEK_NEXT = 210_005
     const val SEEK_PREVIOUS = 210_006
-
-    val supported = intArrayOf(MEDIA_PLAY_PAUSE, MEDIA_NEXT, MEDIA_PREVIOUS, VOICE_ASSIST, SEEK_NEXT, SEEK_PREVIOUS)
 
     fun canonicalize(keyCode: Int): Int? = when (keyCode) {
         MEDIA_PLAY_PAUSE, 85 -> MEDIA_PLAY_PAUSE

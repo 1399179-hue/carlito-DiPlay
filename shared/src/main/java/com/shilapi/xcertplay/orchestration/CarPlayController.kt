@@ -44,6 +44,7 @@ import com.shilapi.xcertplay.mfi.LocalMfiAuthenticationClient
 import com.shilapi.xcertplay.network.CarPlayBonjour
 import com.shilapi.xcertplay.network.diagnosticSummary
 import com.shilapi.xcertplay.network.CarPlayVpnService
+import com.shilapi.xcertplay.network.AutomaticHotspotManager
 import com.shilapi.xcertplay.network.LocalOnlyHotspotManager
 import com.shilapi.xcertplay.network.ManualHotspotManager
 import com.shilapi.xcertplay.network.WifiP2pGroupManager
@@ -236,7 +237,7 @@ class CarPlayController(
         activeSession?.sendRemoteControlMessage(streamId, message) ?: false
 
     @Volatile private var hotspot: WirelessHotspotManager? = null
-    @Volatile private var bonjour: CarPlayBonjour? = null
+    @Volatile private var bonjours = emptyList<CarPlayBonjour>()
     @Volatile private var wirelessDiagnostics: WirelessStartupDiagnostics? = null
     @Volatile private var bluetoothSocket: BluetoothSocket? = null
     @Volatile private var bluetoothStream: BluetoothRfcommDuplexStream? = null
@@ -1017,20 +1018,22 @@ class CarPlayController(
             wirelessConnectionProof.begin(generation) {
                 if (!isStaleWirelessRun(generation)) startedHotspot?.onCarPlayConfirmed()
             }
-            val hostAddress = hotspotInfo.hostAddress
-                ?: throw IOException(
-                    "Wireless hotspot did not provide a usable host address",
-                )
-            if (
-                hostAddress is Inet6Address &&
-                (!hostAddress.isLinkLocalAddress || hostAddress.scopeId == 0)
-            ) {
-                throw IOException(
-                    "Wireless hotspot link-local IPv6 address is not scoped",
-                )
+            val hotspotLinks = hotspotInfo.links
+            if (hotspotLinks.isEmpty()) {
+                throw IOException("Wireless hotspot did not provide a usable host address")
             }
+            hotspotLinks.forEach { link ->
+                val address = link.hostAddress
+                if (address is Inet6Address &&
+                    (!address.isLinkLocalAddress || address.scopeId == 0)
+                ) {
+                    throw IOException("Wireless hotspot link-local IPv6 address is not scoped")
+                }
+            }
+            val primaryLink = hotspotLinks.first()
+            val hostAddress = primaryLink.hostAddress
             val hostAddressText = hostAddressText(hostAddress)
-            val deviceIdentifier = hotspotInfo.bssid
+            val deviceIdentifier = (primaryLink.bssid ?: hotspotInfo.bssid)
                 ?.takeUnless { it.equals(ADAPTER_ADDRESS_PLACEHOLDER, ignoreCase = true) }
                 ?: airPlayConfig.deviceId
             debugLog(
@@ -1039,17 +1042,25 @@ class CarPlayController(
                     "family=${if (hostAddress is Inet6Address) "IPv6" else "IPv4"} " +
                     "identitySource=${if (deviceIdentifier == hotspotInfo.bssid) "interface" else "saved"} " +
                     "host=$hostAddressText " +
+                    "candidateCount=${hotspotLinks.size} " +
                     "band=${hotspotInfo.bandLabel} channel=${hotspotInfo.channel} " +
                     "frequency=${hotspotInfo.frequencyMHz?.toString() ?: "unknown"}MHz",
             )
-            var startedBonjour: CarPlayBonjour? = null
-            val receiveDiagnostics = WirelessReceiveDiagnostics(hotspotInfo.interfaceName)
+            var startedBonjours = emptyList<CarPlayBonjour>()
+            val receiveDiagnostics = hotspotLinks
+                .mapNotNull { it.interfaceName }
+                .distinct()
+                .map(::WirelessReceiveDiagnostics)
             val diagnostics = WirelessStartupDiagnostics(
                 sample = {
-                    "${WirelessInterfaceDiagnostics.snapshot(hotspotInfo.interfaceName)} " +
+                    hotspotLinks.joinToString(" | ") {
+                        WirelessInterfaceDiagnostics.snapshot(it.interfaceName)
+                    } + "\n" +
                         "${startedHotspot?.connectionDiagnosticSnapshot() ?: "association=unknown"} " +
-                        (startedBonjour?.diagnosticSnapshot() ?: "bonjour=not_started") + "\n" +
-                        receiveDiagnostics.snapshot()
+                        (startedBonjours.takeIf { it.isNotEmpty() }
+                            ?.joinToString(" ") { it.diagnosticSnapshot() }
+                            ?: "bonjour=not_started") + "\n" +
+                        receiveDiagnostics.joinToString("\n") { it.snapshot() }
                 },
                 log = { message -> if (!isStaleWirelessRun(generation)) debugLog(message) },
             )
@@ -1085,13 +1096,14 @@ class CarPlayController(
                 ?: throw IOException("Could not bind the CarPlay AirPlay service")
             when (
                 val result = service.attachWireless(
-                    bindAddress = hostAddress,
+                    bindAddresses = hotspotLinks.map { it.hostAddress },
                     config = wirelessAirPlayConfig,
                     identity = identity,
                     pairings = pairings,
                     mfi = mfi,
                     listener = wirelessSessionListener(generation),
                     media = media,
+                    onLinkAccepted = { address -> startedHotspot?.onLinkAccepted(address) },
                 )
             ) {
                 CarPlayVpnService.AttachResult.Started -> Unit
@@ -1101,9 +1113,16 @@ class CarPlayController(
                     throw IOException(result.message)
             }
             val listenerPort = service.boundPort() ?: wirelessAirPlayConfig.port
+            val boundAddresses = service.boundAddresses()
+            val advertisedLinks = hotspotLinks.filter { link ->
+                boundAddresses.any { it.hostAddress == link.hostAddress.hostAddress }
+            }
+            if (advertisedLinks.isEmpty()) {
+                throw IOException("AirPlay listener did not bind a hotspot link")
+            }
             val advertisedAirPlayConfig = wirelessAirPlayConfig.copy(port = listenerPort)
             debugLog(
-                "wireless AirPlay listener attached bind=$hostAddressText " +
+                "wireless AirPlay listener attached links=${advertisedLinks.size} " +
                     "port=$listenerPort" +
                     (if (listenerPort != airPlayConfig.port) " (preferred ${airPlayConfig.port} in use)" else ""),
             )
@@ -1112,22 +1131,21 @@ class CarPlayController(
                 return
             }
 
-            val bonjourClient = CarPlayBonjour(
-                context = appContext,
-                config = advertisedAirPlayConfig,
-                identity = identity,
-                advertisedHost = hostAddress.hostAddress,
-                // Bind discovery and its connect probe to the same AP/address family as AirPlay.
-                // The car hotspot previously used system NSD, which could resolve another interface
-                // or IPv6 while the listener/probe was bound to the AP's IPv4 address.
-                useInterfaceMdns = true,
-                onEvent = { event -> debugLog("wireless bonjour: ${event.diagnosticSummary()}") },
-            )
-            bonjour = bonjourClient
-            bonjourClient.start()
-            startedBonjour = bonjourClient
+            val bonjourClients = advertisedLinks.map { link ->
+                CarPlayBonjour(
+                    context = appContext,
+                    config = advertisedAirPlayConfig,
+                    identity = identity,
+                    advertisedHost = link.hostAddress.hostAddress,
+                    useInterfaceMdns = true,
+                    onEvent = { event -> debugLog("wireless bonjour: ${event.diagnosticSummary()}") },
+                )
+            }
+            bonjours = bonjourClients
+            bonjourClients.forEach(CarPlayBonjour::start)
+            startedBonjours = bonjourClients
             diagnostics.start()
-            debugLog("wireless Bonjour services started mode=interface iface=${hotspotInfo.interfaceName ?: "unknown"}")
+            debugLog("wireless Bonjour services started mode=interface links=${advertisedLinks.size}")
             if (isStaleWirelessRun(generation)) {
                 closeWirelessStack()
                 return
@@ -1186,7 +1204,7 @@ class CarPlayController(
                 passphrase = hotspotInfo.passphrase,
                 channel = hotspotInfo.channel,
                 security = hotspotInfo.security,
-                ipAddresses = listOf(hostAddressText),
+                ipAddresses = advertisedLinks.map { hostAddressText(it.hostAddress) },
                 airPlayPort = listenerPort,
                 deviceIdentifier = deviceIdentifier,
                 publicKey = identity.publicKeyHex,
@@ -1196,7 +1214,9 @@ class CarPlayController(
             wirelessAirPlayEndpoint = endpoint
             debugLog(
                 "wireless endpoint addressCount=${endpoint.ipAddresses.size} " +
-                    "family=${if (hostAddress is Inet6Address) "IPv6" else "IPv4"} " +
+                    "families=${advertisedLinks.joinToString(",") {
+                        if (it.hostAddress is Inet6Address) "IPv6" else "IPv4"
+                    }} " +
                     "port=${endpoint.airPlayPort} channel=${endpoint.channel} security=${endpoint.security}",
             )
             media.setIapTunnelHandler(::startWirelessTunnelControl)
@@ -1898,7 +1918,10 @@ class CarPlayController(
             val manualFallback = result == com.shilapi.xcertplay.network.CarHotspotTethering.Result.UNSUPPORTED &&
                 com.shilapi.xcertplay.network.CarHotspotStatus.isEnabled(appContext) == null
             if (result != com.shilapi.xcertplay.network.CarHotspotTethering.Result.READY && !manualFallback) {
-                throw IOException("${result.diagnostic}. Open the car hotspot settings and connect again.")
+                if (hotspotMode == WirelessHotspotMode.MANUAL) {
+                    throw IOException("${result.diagnostic}. Open the car hotspot settings and connect again.")
+                }
+                debugLog("Car hotspot was not available; automatic connection will create one")
             }
         }
         if (hotspotMode == WirelessHotspotMode.MANUAL &&
@@ -1907,6 +1930,16 @@ class CarPlayController(
             throw IOException("The car hotspot is off. Turn it on in the car settings and connect again.")
         }
         val manager: WirelessHotspotManager = when (hotspotMode) {
+            WirelessHotspotMode.AUTOMATIC -> AutomaticHotspotManager(
+                context = appContext,
+                manualSsid = config.manualHotspotSsid,
+                manualPassphrase = config.manualHotspotPassphrase,
+                manualBand = config.manualHotspotBand,
+                manualChannel = config.manualHotspotChannel,
+                manualSecurity = config.manualHotspotSecurity,
+                wifiP2pPreferredChannel = config.wifiP2pPreferredChannel,
+                onDiagnostic = ::debugLog,
+            )
             WirelessHotspotMode.WIFI_P2P -> WifiP2pGroupManager(appContext, ::debugLog,
                 preferredChannel = config.wifiP2pPreferredChannel)
             WirelessHotspotMode.LOCAL_ONLY_HOTSPOT -> LocalOnlyHotspotManager(appContext, ::debugLog)
@@ -1933,6 +1966,12 @@ class CarPlayController(
             if (hotspot === manager) hotspot = null
             closeBestEffort(hotspotMode.name) { manager.close() }
             if (isStaleWirelessRun(generation)) throw failure
+            if (hotspotMode == WirelessHotspotMode.AUTOMATIC) {
+                throw IOException(
+                    failure.message ?: "Could not prepare a wireless connection. Check that Wi-Fi is available and try again.",
+                    failure,
+                )
+            }
             throw IOException(
                 "Could not establish ${hotspotMode.name} hotspot: " +
                     (failure.message ?: failure.javaClass.simpleName),
@@ -2063,9 +2102,11 @@ class CarPlayController(
 
         closeBluetoothBootstrapTransport()
 
-        val activeBonjour = bonjour
-        bonjour = null
-        if (activeBonjour != null) closeBestEffort("Bonjour") { activeBonjour.close() }
+        val activeBonjours = bonjours
+        bonjours = emptyList()
+        activeBonjours.forEachIndexed { index, activeBonjour ->
+            closeBestEffort("Bonjour ${index + 1}") { activeBonjour.close() }
+        }
 
         val activeHotspot = hotspot
         hotspot = null

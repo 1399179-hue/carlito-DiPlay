@@ -360,7 +360,7 @@ class CarPlayHostActivity : ComponentActivity() {
     private var remoteMfiServer = ""
     private var remoteMfiToken = ""
     private var wirelessPermissionsReady = false
-    private var wirelessHotspotMode = WirelessHotspotMode.WIFI_P2P
+    private var wirelessHotspotMode = WirelessHotspotMode.AUTOMATIC
     private var manualHotspotSsid = ""
     private var manualHotspotPassphrase = ""
     private var manualHotspotBand = ManualHotspotBand.AUTO
@@ -2746,8 +2746,9 @@ class CarPlayHostActivity : ComponentActivity() {
             setPadding(0, dp(8), 0, 0)
         }
         val modes = buildList {
+            add(WirelessHotspotMode.AUTOMATIC to getString(R.string.automatic_connection))
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                add(WirelessHotspotMode.WIFI_P2P to getString(R.string.wi_fi_p2p_5_ghz))
+                add(WirelessHotspotMode.WIFI_P2P to getString(R.string.wifi_direct))
             }
             add(WirelessHotspotMode.MANUAL to getString(R.string.built_in_car_hotspot))
         }
@@ -2958,7 +2959,8 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     private fun hotspotModeLabel(mode: WirelessHotspotMode): String = when (mode) {
-        WirelessHotspotMode.WIFI_P2P -> getString(R.string.wi_fi_p2p_5_ghz)
+        WirelessHotspotMode.AUTOMATIC -> getString(R.string.automatic_connection)
+        WirelessHotspotMode.WIFI_P2P -> getString(R.string.wifi_direct)
         WirelessHotspotMode.LOCAL_ONLY_HOTSPOT -> getString(R.string.localonlyhotspot)
         WirelessHotspotMode.MANUAL -> getString(R.string.manual_hotspot)
     }
@@ -2983,9 +2985,6 @@ class CarPlayHostActivity : ComponentActivity() {
             is CarPlayStatus.HotspotReady -> HotspotStatus(
                 state = getString(R.string.ready),
                 ssid = status.ssid,
-                band = status.band,
-                channel = status.channel,
-                backend = status.backend,
             )
             CarPlayStatus.WaitingForPairedIphone ->
                 hotspotStatus.copy(state = getString(R.string.waiting_for_paired_iphone))
@@ -3012,11 +3011,6 @@ class CarPlayHostActivity : ComponentActivity() {
         hotspotStatusView?.text = buildString {
             append(getString(R.string.hotspot_wireless_prefix)).append(status.state)
             status.ssid?.let { append(getString(R.string.hotspot_ssid_prefix)).append(it) }
-            status.backend?.let { append(getString(R.string.hotspot_backend_prefix)).append(it) }
-            status.band?.let { append(getString(R.string.hotspot_band_prefix)).append(it) }
-            status.channel?.let {
-                append(getString(R.string.hotspot_channel_prefix)).append(if (it == 0) getString(R.string.auto_label) else it.toString())
-            }
         }
     }
 
@@ -4381,7 +4375,7 @@ class CarPlayHostActivity : ComponentActivity() {
         CarPlayStatus.MfiReady -> getString(R.string.mfi_authentication_ready)
         CarPlayStatus.StartingHotspot -> getString(R.string.starting_wireless_hotspot)
         is CarPlayStatus.HotspotReady ->
-            getString(R.string.status_hotspot_ready, backend, ssid, band, if (channel == 0) getString(R.string.auto_value) else channel.toString())
+            getString(R.string.status_wireless_ready, ssid)
         CarPlayStatus.WaitingForPairedIphone -> getString(R.string.waiting_for_paired_iphone)
         CarPlayStatus.ConnectingBluetooth -> getString(R.string.connecting_bluetooth)
         CarPlayStatus.RunningWireless -> getString(R.string.wireless_carplay_control_running)
@@ -4433,9 +4427,6 @@ class CarPlayHostActivity : ComponentActivity() {
     private data class HotspotStatus(
         val state: String,
         val ssid: String? = null,
-        val band: String? = null,
-        val channel: Int? = null,
-        val backend: String? = null,
     )
 }
 

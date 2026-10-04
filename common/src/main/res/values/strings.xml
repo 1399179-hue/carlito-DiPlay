@@ -16,6 +16,8 @@
     <string name="marker_up">Up</string>
     <string name="marker_down">Down</string>
     <string name="marker_centre_default">Centre · default</string>
+    <string name="hotspot_mode_auto_desc">Uses the available car hotspot or prepares a compatible wireless connection automatically.</string>
+    <string name="hotspot_hint_auto">DiPlay will choose and prepare the best available wireless connection.</string>
     <string name="hotspot_mode_manual_desc">Use the car’s own hotspot. Select 5 GHz in car settings if available.</string>
     <string name="hotspot_mode_p2p_desc">Alternative setup. Requires the car’s Wi-Fi switch on; a 2.4 GHz connection may stutter.</string>
     <string name="hotspot_details_off">Hotspot is off · Turn it on in car settings.</string>
@@ -60,6 +62,7 @@
     <string name="mapping_aaos_buses">AAOS buses</string>
     <string name="mapping_mobile_compatible">Mobile compatible</string>
     <string name="status_hotspot_ready">Hotspot ready: %1$s, %2$s, %3$s, channel %4$s</string>
+    <string name="status_wireless_ready">Wireless connection ready: %1$s</string>
     <string name="status_waiting_reenumeration">Waiting for iPhone re-enumeration</string>
     <string name="status_attaching_ncm">Attaching NCM/AirPlay network</string>
     <string name="status_failed">Failed: %1$s</string>

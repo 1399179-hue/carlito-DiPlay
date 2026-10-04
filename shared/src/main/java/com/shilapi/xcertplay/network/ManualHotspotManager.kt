@@ -32,11 +32,12 @@ import java.util.concurrent.TimeUnit
  */
 class ManualHotspotManager(
     context: Context,
-    ssid: String,
-    passphrase: String,
+    ssid: String?,
+    passphrase: String?,
     band: ManualHotspotBand,
     channel: Int,
     security: ManualHotspotSecurity,
+    private val preferSystemConfiguration: Boolean = false,
     private val onDiagnostic: (String) -> Unit = {},
 ) : WirelessHotspotManager {
     private val appContext = context.applicationContext
@@ -44,27 +45,32 @@ class ManualHotspotManager(
         appContext.getSystemService(ConnectivityManager::class.java)
     private val wifiManager = appContext.getSystemService(WifiManager::class.java)
         ?: throw IllegalStateException("WifiManager is unavailable")
-    private val expectedSsid = ssid
-    private val passphrase = passphrase
+    private val expectedSsid = ssid?.takeIf { it.isNotBlank() }
+    private val passphrase = passphrase.orEmpty()
     private val expectedBand = band
     private val expectedChannel = channel
     private val expectedSecurity = security.toIap2Security()
+    private val linkPreferences = appContext.getSharedPreferences(LINK_PREFS, Context.MODE_PRIVATE)
+
+    @Volatile
+    private var availableInterfaces = emptyList<LocalHotspotInterface>()
 
     @Volatile
     private var closed = false
 
     init {
-        require(expectedSsid.isNotBlank()) { "ssid must not be blank" }
-        require('\u0000' !in expectedSsid) { "ssid must not contain U+0000" }
-        require('\u0000' !in passphrase) { "passphrase must not contain U+0000" }
-        require(passphrase.isEmpty() || passphrase.length in 8..63) {
+        require(expectedSsid == null || '\u0000' !in expectedSsid) { "ssid must not contain U+0000" }
+        require('\u0000' !in this.passphrase) { "passphrase must not contain U+0000" }
+        require(this.passphrase.isEmpty() || this.passphrase.length in 8..63) {
             "passphrase must be empty or between 8 and 63 characters"
         }
         require(channel in 0..196) { "channel must be 0 or in 1..196" }
-        require(expectedSecurity == Iap2WirelessSecurity.NONE || passphrase.isNotEmpty()) {
+        require(preferSystemConfiguration && expectedSsid == null ||
+            expectedSecurity == Iap2WirelessSecurity.NONE || this.passphrase.isNotEmpty()) {
             "passphrase is required for secured manual hotspots"
         }
-        require(expectedSecurity != Iap2WirelessSecurity.NONE || passphrase.isEmpty()) {
+        require(preferSystemConfiguration && expectedSsid == null ||
+            expectedSecurity != Iap2WirelessSecurity.NONE || this.passphrase.isEmpty()) {
             "passphrase must be empty for open manual hotspots"
         }
     }
@@ -77,21 +83,31 @@ class ManualHotspotManager(
 
         val deadlineNanos = deadlineAfter(timeoutMillis)
         val apConfiguration = readApConfiguration()
-        if (apConfiguration != null && apConfiguration.ssid != expectedSsid) {
+        if (!preferSystemConfiguration && apConfiguration != null &&
+            expectedSsid != null && apConfiguration.ssid != expectedSsid
+        ) {
             throw IOException(
                 "Manual hotspot SSID does not match the active local AP configuration: " +
                     "'${apConfiguration.ssid}'",
             )
         }
-        validateApConfiguration(apConfiguration)
+        if (!preferSystemConfiguration) validateApConfiguration(apConfiguration)
+        val activeSsid = when {
+            preferSystemConfiguration && apConfiguration != null -> apConfiguration.ssid
+            expectedSsid != null -> expectedSsid
+            apConfiguration != null -> apConfiguration.ssid
+            else -> throw IOException("The active hotspot configuration is not readable")
+        }
 
         var lastReason = "local hotspot interface was not found"
         while (true) {
             check(!closed) { "ManualHotspotManager is closed" }
-            val localInterface = findLocalHotspotInterface()
+            val localInterfaces = findLocalHotspotInterfaces()
+            val localInterface = localInterfaces.firstOrNull()
             if (localInterface != null) {
-                val connectionFrequency = frequencyFromConnectionInfo()
-                val scanFrequency = frequencyFromScanResult(localInterface)
+                availableInterfaces = localInterfaces
+                val connectionFrequency = frequencyFromConnectionInfo(activeSsid)
+                val scanFrequency = frequencyFromScanResult(localInterface, activeSsid)
                 val channel = observedManualHotspotChannel(
                     apChannel = apConfiguration?.channel ?: 0,
                     connectionFrequencyMHz = connectionFrequency,
@@ -131,7 +147,7 @@ class ManualHotspotManager(
                 }
                 val observedBandLabel = wifiBandLabel(apConfiguration?.band)
                 return WirelessHotspotInfo(
-                    ssid = expectedSsid,
+                    ssid = activeSsid,
                     passphrase = effectivePassphrase,
                     security = security,
                     channel = channel,
@@ -146,6 +162,9 @@ class ManualHotspotManager(
                             frequencyMHz?.let(::bandLabel) ?: observedBandLabel ?: "Auto"
                     },
                     backend = WirelessHotspotBackend.MANUAL_HOTSPOT,
+                    linkCandidates = localInterfaces.map {
+                        WirelessLinkCandidate(it.name, it.hostAddress, it.hardwareAddress, it.score)
+                    },
                 )
             }
 
@@ -162,6 +181,15 @@ class ManualHotspotManager(
 
     override fun close() {
         closed = true
+    }
+
+    override fun onLinkAccepted(address: InetAddress) {
+        val selected = availableInterfaces.firstOrNull {
+            it.hostAddress.hostAddress == address.hostAddress
+        } ?: return
+        linkPreferences.edit().putString(LINK_PREF_LAST_INTERFACE, selected.name).apply()
+        onDiagnostic("Manual hotspot link confirmed iface=${selected.name} " +
+            "family=${if (address is Inet6Address) "IPv6" else "IPv4"}")
     }
 
     private fun validateApConfiguration(configuration: ManualApConfiguration?) {
@@ -207,15 +235,16 @@ class ManualHotspotManager(
         }
     }
 
-    private fun findLocalHotspotInterface(): LocalHotspotInterface? {
+    private fun findLocalHotspotInterfaces(): List<LocalHotspotInterface> {
         val interfaces = try {
             NetworkInterface.getNetworkInterfaces()
         } catch (_: SocketException) {
             null
-        } ?: return null
+        } ?: return emptyList()
         val primaryInterface = connectivityManager?.activeNetwork
             ?.let { connectivityManager.getLinkProperties(it)?.interfaceName }
         val tetheredInterfaces = tetheredInterfaceNames()
+        val preferredInterface = linkPreferences.getString(LINK_PREF_LAST_INTERFACE, null)
         return Collections.list(interfaces)
             .asSequence()
             .filter { isUsableInterface(it, primaryInterface, tetheredInterfaces) }
@@ -229,11 +258,15 @@ class ManualHotspotManager(
                             ?: HotspotInterfaceBssid.read(networkInterface.name),
                         tethered = networkInterface.name in tetheredInterfaces,
                         score = interfaceScore(networkInterface.name, address) +
-                            if (networkInterface.name in tetheredInterfaces) 1_000 else 0,
+                            (if (networkInterface.name in tetheredInterfaces) 1_000 else 0) +
+                            (if (networkInterface.name == preferredInterface) 500 else 0),
                     )
                 }
             }
-            .maxByOrNull(LocalHotspotInterface::score)
+            .sortedByDescending(LocalHotspotInterface::score)
+            .distinctBy { it.hostAddress.hostAddress }
+            .take(MAX_LINK_CANDIDATES)
+            .toList()
     }
 
     private fun isUsableInterface(
@@ -287,17 +320,17 @@ class ManualHotspotManager(
         } ?: wirelessHostAddress(addresses, index)
     }
 
-    private fun frequencyFromConnectionInfo(): Int? {
+    private fun frequencyFromConnectionInfo(activeSsid: String): Int? {
         val connectionInfo = try {
             wifiManager.connectionInfo
         } catch (_: SecurityException) {
             null
         } ?: return null
-        if (unquote(connectionInfo.ssid) != expectedSsid) return null
+        if (unquote(connectionInfo.ssid) != activeSsid) return null
         return connectionInfo.frequency.takeIf { it > 0 }
     }
 
-    private fun frequencyFromScanResult(localInterface: LocalHotspotInterface): Int? {
+    private fun frequencyFromScanResult(localInterface: LocalHotspotInterface, activeSsid: String): Int? {
         val localBssid = localInterface.hardwareAddress ?: return null
         val scanResults = try {
             wifiManager.scanResults
@@ -305,7 +338,7 @@ class ManualHotspotManager(
             return null
         }
         return scanResults.firstOrNull { result ->
-            result.SSID == expectedSsid &&
+            result.SSID == activeSsid &&
                 result.BSSID.equals(localBssid, ignoreCase = true) &&
                 result.frequency > 0
         }?.frequency
@@ -466,6 +499,9 @@ class ManualHotspotManager(
 
     private companion object {
         const val TAG = "xcertplay-usb"
+        const val LINK_PREFS = "wireless_link_preferences"
+        const val LINK_PREF_LAST_INTERFACE = "manual_hotspot_last_interface"
+        const val MAX_LINK_CANDIDATES = 4
         const val NANOS_PER_MILLISECOND = 1_000_000L
         val INTERFACE_POLL_NANOS: Long = TimeUnit.MILLISECONDS.toNanos(250)
         val EXCLUDED_INTERFACE_PREFIXES = listOf(

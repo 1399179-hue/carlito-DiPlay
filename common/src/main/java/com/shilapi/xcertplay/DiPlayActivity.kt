@@ -418,6 +418,7 @@ class DiPlayActivity : ComponentActivity() {
         }
         card.addView(connectButton, matchButton())
         val connectionHint = when (AirPlayPersistence.loadWirelessHotspotMode(this)) {
+            WirelessHotspotMode.AUTOMATIC -> getString(R.string.hotspot_hint_auto)
             WirelessHotspotMode.MANUAL -> getString(R.string.hotspot_hint_manual)
             WirelessHotspotMode.LOCAL_ONLY_HOTSPOT -> getString(R.string.hotspot_hint_local)
             else -> getString(R.string.hotspot_hint_p2p)
@@ -1163,11 +1164,20 @@ class DiPlayActivity : ComponentActivity() {
 
     private fun wirelessLinkControls(parent: LinearLayout) {
         val mode = if (pendingCarHotspotSetup) WirelessHotspotMode.MANUAL else AirPlayPersistence.loadWirelessHotspotMode(this)
-        val modes = listOf(WirelessHotspotMode.MANUAL, WirelessHotspotMode.WIFI_P2P)
-        val titles = listOf(getString(R.string.built_in_car_hotspot), getString(R.string.wifi_direct))
+        val modes = listOf(
+            WirelessHotspotMode.AUTOMATIC,
+            WirelessHotspotMode.MANUAL,
+            WirelessHotspotMode.WIFI_P2P,
+        )
+        val titles = listOf(
+            getString(R.string.automatic_connection),
+            getString(R.string.built_in_car_hotspot),
+            getString(R.string.wifi_direct),
+        )
         val descriptions = listOf(
+            getString(R.string.hotspot_mode_auto_desc),
             getString(R.string.hotspot_mode_manual_desc),
-            getString(R.string.hotspot_mode_p2p_desc)
+            getString(R.string.hotspot_mode_p2p_desc),
         )
         val wide = resources.configuration.screenWidthDp >= 850
         val choices = if (wide) row().apply { gravity = Gravity.TOP } else column()
@@ -1200,7 +1210,7 @@ class DiPlayActivity : ComponentActivity() {
                 }
             }, matchButton(12, 60))
             parent.addView(label(if (pendingCarHotspotSetup) getString(R.string.finish_setup_save_your_hotspot_details_to_use_this_mode) else if (carHotspotOff()) getString(R.string.hotspot_details_off) else getString(R.string.hotspot_details_saved), 15, if (carHotspotOff()) WARNING else MUTED).apply { setPadding(0, dp(12), 0, 0) })
-        } else {
+        } else if (mode == WirelessHotspotMode.WIFI_P2P) {
             parent.addView(label(getString(R.string.turn_the_car_s_wi_fi_switch_on_allow_location_nearby_devic), 16, MUTED))
             wifiDirectChannelControl(parent)
             parent.addView(button(getString(R.string.open_car_wi_fi_settings), false) { openCarClientWifiSettings() }, matchButton(12, 60))
