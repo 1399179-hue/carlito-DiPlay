@@ -55,6 +55,10 @@ internal class GeelySteeringWheelInputChannel(
         fun isKnownGeelyHeadUnit(): Boolean = Build.MODEL.orEmpty().uppercase().let { model ->
             model.contains("G636") || model.contains("FX11") || model.contains("KX11")
         }
+
+        fun enabledByDefault(): Boolean = isKnownGeelyHeadUnit() &&
+            (!Build.MODEL.orEmpty().contains("KX11", ignoreCase = true) ||
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
     }
 
     private val app = context.applicationContext

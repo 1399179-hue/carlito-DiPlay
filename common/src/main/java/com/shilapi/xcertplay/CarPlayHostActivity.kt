@@ -108,19 +108,19 @@ import java.util.concurrent.atomic.AtomicBoolean
 class CarPlayHostActivity : ComponentActivity() {
     private val geelyFactory by lazy { GeelyFactoryCarPlay.load(applicationContext) }
     private val factoryCarIcons by lazy { geelyFactory?.icons().orEmpty() }
-    private val opusOutputSupported by lazy {
-        if (Build.MODEL.orEmpty().contains("KX11", ignoreCase = true)) {
-            appendLog("Audio Opus disabled for this head unit; requesting PCM audio")
-            return@lazy false
+    private fun supportsOpusOutput(): Boolean {
+        if (!wirelessEnabled) {
+            appendLog("Audio Opus not advertised for wired CarPlay; requesting PCM audio")
+            return false
         }
         val decoder = try {
             MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_AUDIO_OPUS)
         } catch (error: Exception) {
             appendLog("Audio Opus decoder unavailable; requesting PCM guidance (${error.javaClass.simpleName})")
-            return@lazy false
+            return false
         }
         runCatching { decoder.release() }
-        true
+        return true
     }
     private data class CarIconSelection(val icons: List<AirPlayIcon>, val statusRes: Int)
     private data class SettingsBaseline(
@@ -2994,7 +2994,7 @@ class CarPlayHostActivity : ComponentActivity() {
             cluster = clusterDisplayConfig(),
             rightHandDrive = rightHandDrive,
             hevc = hevcEnabled,
-            opusOutputSupported = opusOutputSupported,
+            opusOutputSupported = supportsOpusOutput(),
             microphone = microphoneAvailable,
             manufacturer = normalizedManufacturer(),
             model = normalizedModel(),

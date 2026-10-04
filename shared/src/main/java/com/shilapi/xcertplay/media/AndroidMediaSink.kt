@@ -1007,7 +1007,11 @@ private class AudioRenderer(
         }
         codec = try {
             MediaCodecStartup.create(
-                create = { diagnosticStage = "decoder-create"; MediaCodec.createDecoderByType(mime) },
+                create = {
+                    diagnosticStage = "decoder-create"
+                    if (mime == MediaFormat.MIMETYPE_AUDIO_OPUS) createOpusDecoder()
+                    else MediaCodec.createDecoderByType(mime)
+                },
                 configure = { diagnosticStage = "decoder-configure"; it.configure(mediaFormat, null, null, 0) },
                 start = { diagnosticStage = "decoder-start"; it.start() },
                 release = { it.release() },

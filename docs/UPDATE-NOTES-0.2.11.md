@@ -2,6 +2,9 @@
 
 ## 本次更新
 
+- 修复 KX11 无线连接画面正常但声音仍从手机播放的问题；有线连接继续使用已验证的音频方式。
+- 修复 Android 9 KX11 已开启车机热点仍停在准备中的问题。
+- Android 9 KX11 不再默认接入原车方向盘按键，避免左右切歌和暂停冲突；需要时仍可在设置中开启兼容模式。
 - 修复更多吉利老款车机无线连接一直停在启动中的问题。
 - 修复 KX11 车机通话、语音助手和导航可能无声的问题。
 - 导航播报时音乐衔接更平顺，并适配银河 E5 的原车音频输出。
@@ -25,6 +28,9 @@
 
 ## What’s new
 
+- Restore wireless CarPlay sound on KX11 while keeping the proven wired audio path.
+- Recognize the hotspot interface used by Android 9 KX11 head units so wireless CarPlay can leave the preparation screen.
+- Leave direct steering controls off by default on Android 9 KX11 to avoid playback-control conflicts; the compatibility option remains available in settings.
 - Fix wireless CarPlay remaining on the starting screen on more legacy Geely head units.
 - Restore calls, voice assistant audio and guidance on KX11 head units.
 - Keep music smoother during guidance and support the Galaxy E5 factory audio output.

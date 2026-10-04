@@ -1,6 +1,9 @@
 # Unreleased
 
 - Save diagnostic reports privately in DiPlay when the head unit has no document picker or working Downloads provider, with explicit Share and selectable View report actions. This unblocks collecting logs for #135; its CarPlay startup failure still needs a device report.
+- Restore wireless CarPlay sound on KX11 head units while keeping the proven wired audio path.
+- Recognize the hotspot interface used by Android 9 KX11 head units so wireless CarPlay can leave the preparation screen.
+- Leave direct steering-button compatibility off by default on Android 9 KX11 head units to avoid playback-control conflicts; it remains available in settings.
 
 # DiPlay 0.2.11 — 2026-10-03
 

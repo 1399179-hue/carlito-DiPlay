@@ -466,7 +466,6 @@ class ManualHotspotManager(
             "sit",
             "ip6",
             "bond",
-            "eth",
         )
     }
 }
