@@ -1,0 +1,96 @@
+name: Build fork release APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;28.2.13676358
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # First run: generate a keystore and upload it so it can be stored in secrets
+      # for stable, reinstall-friendly signing on subsequent runs.
+      - name: Ensure release keystore
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$KS_B64" ]]; then
+            printf '%s' "$KS_B64" | base64 --decode > "$RUNNER_TEMP/diplay-release.jks"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 missing; generating an ephemeral keystore (save it from artifacts!)."
+            keytool -genkeypair -v \
+              -keystore "$RUNNER_TEMP/diplay-release.jks" \
+              -storepass diplay-fork-2026 -alias diplayfork -keypass diplay-fork-2026 \
+              -keyalg RSA -keysize 2048 -validity 10950 \
+              -dname "CN=DiPlay Fork,O=nomfi,C=CN"
+            echo "KEYSTORE_GENERATED=true" >> "$GITHUB_ENV"
+          fi
+          {
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/diplay-release.jks"
+            echo "ANDROID_KEYSTORE_PASSWORD=diplay-fork-2026"
+            echo "ANDROID_KEY_ALIAS=diplayfork"
+            echo "ANDROID_KEY_PASSWORD=diplay-fork-2026"
+          } >> "$GITHUB_ENV"
+
+      - name: Upload generated keystore (first run only)
+        if: env.KEYSTORE_GENERATED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-keystore-store-in-secrets
+          path: diplay-release.jks
+          if-no-files-found: error
+
+      - name: Prepare CarPlay authentication assets
+        env:
+          MFI_IDENTITY_BASE64: ${{ secrets.DIPLAY_AUTH_IDENTITY_BASE64 }}
+          MFI_CERTIFICATE_BASE64: ${{ secrets.DIPLAY_AUTH_CERTIFICATE_BASE64 }}
+        run: |
+          set -euo pipefail
+          auth_dir="$RUNNER_TEMP/diplay-auth-assets/offline-mfi"
+          mkdir -p "$auth_dir"
+          printf '%s' "$MFI_IDENTITY_BASE64" | base64 --decode > "$auth_dir/identity.pk8"
+          printf '%s' "$MFI_CERTIFICATE_BASE64" | base64 --decode > "$auth_dir/certificate.p7b"
+          test -s "$auth_dir/identity.pk8"
+          test -s "$auth_dir/certificate.p7b"
+          openssl pkey -inform DER -in "$auth_dir/identity.pk8" -noout -check >/dev/null
+          openssl pkcs7 -inform DER -in "$auth_dir/certificate.p7b" -print_certs -noout >/dev/null
+          key_fp="$(openssl pkey -inform DER -in "$auth_dir/identity.pk8" -pubout -outform DER | sha256sum | cut -d' ' -f1)"
+          cert_fp="$(openssl pkcs7 -inform DER -in "$auth_dir/certificate.p7b" -print_certs -outform PEM | openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | cut -d' ' -f1)"
+          if [[ "$key_fp" != "$cert_fp" ]]; then
+            echo "::error::CarPlay identity and certificate do not match."
+            exit 1
+          fi
+          echo "DIPLAY_AUTH_ASSETS_DIR=$RUNNER_TEMP/diplay-auth-assets" >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        run: ./gradlew :mobile:assembleRelease --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: diplay-fork-release-apk
+          path: mobile/build/outputs/apk/release/*.apk
+          if-no-files-found: error
