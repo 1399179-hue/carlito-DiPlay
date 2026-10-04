@@ -20,8 +20,10 @@
 - 改善更多老款吉利车机的热点识别，优先使用更兼容的网络地址。
 - 方向盘按键识别可学习更多 OneOS 车机上报的按键，并正确区分按下与松开。
 - 保留吉利车机的音乐、导航、通话和语音助手音频切换，以及蓝牙音乐交接。
-- 保留 G636、FX11、KX11 的原车方向盘控制、HUD 副屏选择和自定义返回桌面图标。
-- 用户可填写问题说明并主动将脱敏诊断报告上传云端。
+- 恢复设置中的方向盘按键识别、兼容模式和 HUD 开关，并提供投影屏幕选择与内容大小调整。
+- 修复 HUD 导航提示显示，恢复 G636、FX11、KX11 的原车图标、自定义返回桌面图标和音乐播放后的音频切换。
+- 恢复日志收集中的问题说明和主动上传云端功能。
+- 恢复“关于”页面的版本入口、来源信息和版本点击解锁的诊断入口。
 
 同一 Wi-Fi 连接需要路由器允许设备互相访问。HUD、原车音频和方向盘功能取决于车机开放的能力；升级后无需卸载旧版本。
 
@@ -45,7 +47,9 @@
 - Improve hotspot detection on more legacy Geely head units and prefer the more compatible network address.
 - Let steering-button identification learn more OneOS key codes while correctly matching press and release events.
 - Retain Geely audio switching for music, guidance, calls and the voice assistant, including Bluetooth music handoff.
-- Retain factory steering controls, HUD display selection and the custom CarPlay home icon on G636, FX11 and KX11.
-- Let users describe a problem and explicitly upload a redacted diagnostic report to the cloud.
+- Restore steering-button identification, compatibility mode and HUD settings, including display selection and content size.
+- Fix HUD navigation guidance and restore factory icons, custom home icons and audio switching when music playback resumes on G636, FX11 and KX11.
+- Restore problem descriptions and user-triggered diagnostic uploads to the cloud.
+- Restore the About page’s version control, source information and diagnostics unlocked by tapping the version.
 
 Same Wi-Fi requires the router to allow communication between connected devices. HUD, factory audio and steering controls depend on capabilities exposed by the head unit. The update can be installed over the previous version.
