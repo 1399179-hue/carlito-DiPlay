@@ -254,6 +254,7 @@ class ManualHotspotManager(
     private fun interfaceScore(name: String, address: InetAddress): Int {
         var score = when {
             name.startsWith("ap") || name.contains("softap", ignoreCase = true) -> 100
+            name.startsWith("vt") -> 90
             name.startsWith("p2p") -> 80
             name.startsWith("wlan") -> 70
             else -> 0
@@ -269,8 +270,19 @@ class ManualHotspotManager(
         return score
     }
 
-    private fun NetworkInterface.hotspotAddress(): InetAddress? =
-        wirelessHostAddress(Collections.list(inetAddresses), index)
+    private fun NetworkInterface.hotspotAddress(): InetAddress? {
+        val addresses = Collections.list(inetAddresses)
+        // A manual AP hands the iPhone an IPv4 gateway address, so iOS dials back over IPv4.
+        // Falling back to the interface's scoped link-local IPv6 (fe80::) makes the AirPlay
+        // listener bind to an address the iPhone never dials: the TCP handshake never runs
+        // (tcpAccepted=0) and the session stalls at WiFi_discovery_or_AirPlay_TCP.
+        // Only an IPv4 host address is usable here, so let the caller retry until the AP has
+        // finished configuring IPv4 instead of binding an unusable link-local address.
+        return addresses.firstOrNull {
+            it is Inet4Address && !it.isLoopbackAddress && !it.isLinkLocalAddress &&
+                !it.isAnyLocalAddress && !it.isMulticastAddress
+        }
+    }
 
     private fun frequencyFromConnectionInfo(): Int? {
         val connectionInfo = try {

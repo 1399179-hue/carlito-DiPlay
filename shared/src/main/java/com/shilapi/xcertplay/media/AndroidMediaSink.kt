@@ -107,8 +107,10 @@ internal class AudioFocusCoordinator(
     }
 
     private fun refreshRequest() {
-        val primary = active.values.maxByOrNull { it.channel.focusPriority() }
+        val primary = active.values.filter { it.channel != AudioChannel.NAVIGATION }
+            .maxByOrNull { it.channel.focusPriority() }
             ?: mediaAttributes?.takeIf { !mediaSuppressed }?.let { Entry(AudioChannel.MEDIA, it) }
+            ?: active.values.firstOrNull { it.channel == AudioChannel.NAVIGATION }
         if (primary == null) {
             requestGeneration++
             request?.let { manager?.abandonAudioFocusRequest(it) }
@@ -155,10 +157,14 @@ internal class AudioFocusCoordinator(
     }
 
     private fun applyVolumes() {
+        val navigationActive = active.values.any { it.channel == AudioChannel.NAVIGATION }
         active.forEach { (track, entry) ->
-            val localVolume = if (!factoryRouting || entry.channel == requestedChannel || requestedChannel == AudioChannel.MEDIA) FULL_VOLUME
-                else if (requestedChannel == AudioChannel.NAVIGATION && entry.channel == AudioChannel.MEDIA) DUCKED_VOLUME
-                else 0f
+            val localVolume = when {
+                !factoryRouting -> FULL_VOLUME
+                entry.channel == AudioChannel.MEDIA && navigationActive -> DUCKED_VOLUME
+                entry.channel == requestedChannel || requestedChannel == AudioChannel.MEDIA -> FULL_VOLUME
+                else -> 0f
+            }
             val volume = if (factoryRouting && mediaSuppressed && entry.channel == AudioChannel.MEDIA) 0f else focusVolume * localVolume
             runCatching { track.setStereoVolume(volume, volume) }
         }
@@ -864,6 +870,7 @@ private class AudioRenderer(
     @Volatile private var running = true
     @Volatile private var started = false
     private var codec: MediaCodec? = null
+    private var softwareOpusDecoder: SoftwareOpusDecoder? = null
     private var track: AudioTrack? = null
     private var pcm = ByteArray(64 * 1024)
     private var playbackStarted = false
@@ -941,7 +948,11 @@ private class AudioRenderer(
                 "mediaChannel=$mediaChannel navigationChannel=$navigationChannel focus=$audioFocusEnabled") }
             when (format.codec) {
                 AudioCodecKind.AAC_LC -> configureCodec(MediaFormat.MIMETYPE_AUDIO_AAC)
-                AudioCodecKind.OPUS -> configureCodec(MediaFormat.MIMETYPE_AUDIO_OPUS)
+                AudioCodecKind.OPUS -> {
+                    diagnosticStage = "decoder-create"
+                    softwareOpusDecoder = SoftwareOpusDecoder(format.sampleRate, format.channels)
+                    report("Audio: decoder ready audioType=${format.audioType} codec=${format.codec} name=Concentus")
+                }
                 AudioCodecKind.LPCM -> Unit
             }
             createTrack()
@@ -1261,7 +1272,6 @@ private class AudioRenderer(
 
     private fun handle(packet: AudioPacket) {
         val rtp = packet.rtp
-        val timestampUs = sampleTimestampUs(packet.sample)
         when (format.codec) {
             AudioCodecKind.LPCM -> writePcm(byteSwapS16(rtp.copyOfRange(12, rtp.size)))
             AudioCodecKind.AAC_LC -> {
@@ -1276,7 +1286,7 @@ private class AudioRenderer(
                     }
                     feedCodec(
                         MediaCodecSupport.adtsFrame(accessUnit, format.sampleRate, format.channels),
-                        timestampUs,
+                        sampleTimestampUs(packet.sample),
                     )
                 }
             }
@@ -1293,7 +1303,27 @@ private class AudioRenderer(
                     }
                     return
                 }
-                feedCodec(accessUnit, timestampUs)
+                val decoder = softwareOpusDecoder ?: run {
+                    decoderUnavailablePackets++
+                    return
+                }
+                try {
+                    val decodedBytes = decoder.decode(accessUnit)
+                    inputQueued++
+                    outputBuffers++
+                    if (!firstInputQueuedLogged) {
+                        firstInputQueuedLogged = true
+                        Log.i(TAG, "audio software Opus first input bytes=${accessUnit.size} decodedBytes=$decodedBytes")
+                    }
+                    if (decodedBytes > 0) writePcm(decoder.pcm, 0, decodedBytes)
+                } catch (error: Exception) {
+                    inputDropped++
+                    if (inputDropped <= 3) {
+                        Log.w(TAG, "audio software Opus decode failed bytes=${accessUnit.size}", error)
+                        report("Audio: software Opus decode failed audioType=${format.audioType} " +
+                            "error=${error.javaClass.simpleName}")
+                    }
+                }
             }
         }
     }
@@ -1549,6 +1579,7 @@ private class AudioRenderer(
         abandonAudioFocus()
         val codec = codec
         this.codec = null
+        softwareOpusDecoder = null
         if (codec != null) {
             try {
                 codec.stop()
