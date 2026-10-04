@@ -29,7 +29,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
       - name: Fetch upstream main
         run: |
-          git remote add upstream https://github.com/shihabal3amri/DiPlay.git
+          git remote add upstream https://github.com/carlito12345/DiPlay.git
           git fetch upstream main
       - name: Merge upstream changes
         id: merge
