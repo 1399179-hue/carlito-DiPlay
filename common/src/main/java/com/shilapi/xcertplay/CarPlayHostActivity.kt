@@ -109,6 +109,10 @@ class CarPlayHostActivity : ComponentActivity() {
     private val geelyFactory by lazy { GeelyFactoryCarPlay.load(applicationContext) }
     private val factoryCarIcons by lazy { geelyFactory?.icons().orEmpty() }
     private val opusOutputSupported by lazy {
+        if (Build.MODEL.orEmpty().contains("KX11", ignoreCase = true)) {
+            appendLog("Audio Opus disabled for this head unit; requesting PCM audio")
+            return@lazy false
+        }
         val decoder = try {
             MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_AUDIO_OPUS)
         } catch (error: Exception) {

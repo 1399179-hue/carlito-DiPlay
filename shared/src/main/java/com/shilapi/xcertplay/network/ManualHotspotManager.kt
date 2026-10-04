@@ -254,6 +254,7 @@ class ManualHotspotManager(
     private fun interfaceScore(name: String, address: InetAddress): Int {
         var score = when {
             name.startsWith("ap") || name.contains("softap", ignoreCase = true) -> 100
+            name.startsWith("vt") -> 90
             name.startsWith("p2p") -> 80
             name.startsWith("wlan") -> 70
             else -> 0
@@ -269,8 +270,13 @@ class ManualHotspotManager(
         return score
     }
 
-    private fun NetworkInterface.hotspotAddress(): InetAddress? =
-        wirelessHostAddress(Collections.list(inetAddresses), index)
+    private fun NetworkInterface.hotspotAddress(): InetAddress? {
+        val addresses = Collections.list(inetAddresses)
+        return addresses.firstOrNull {
+            it is Inet4Address && !it.isLoopbackAddress && !it.isLinkLocalAddress &&
+                !it.isAnyLocalAddress && !it.isMulticastAddress
+        } ?: wirelessHostAddress(addresses, index)
+    }
 
     private fun frequencyFromConnectionInfo(): Int? {
         val connectionInfo = try {
@@ -460,6 +466,7 @@ class ManualHotspotManager(
             "sit",
             "ip6",
             "bond",
+            "eth",
         )
     }
 }

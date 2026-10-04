@@ -82,7 +82,7 @@ class GeelyFactoryCarPlay private constructor(private val config: JSONObject?) {
 
         fun load(context: Context): GeelyFactoryCarPlay? {
             val identity = "${Build.MANUFACTURER} ${Build.BRAND} ${Build.MODEL} ${Build.PRODUCT} ${Build.DEVICE}"
-            val modelMatches = Regex("(?i)(?:^|[^a-z0-9])(?:G636|FX11|KX11|Geely)(?:$|[^a-z0-9])").containsMatchIn(identity)
+            val modelMatches = Regex("(?i)(?:^|[^a-z0-9])(?:G636|FX11|KX11|E245|Geely)(?:$|[^a-z0-9])").containsMatchIn(identity)
             val configMatches = factory.config?.optJSONObject("ManufacturerInfo")
                 ?.optString("Manufacturer")?.equals("Geely", true) == true
             val factoryReceiverInstalled = runCatching {

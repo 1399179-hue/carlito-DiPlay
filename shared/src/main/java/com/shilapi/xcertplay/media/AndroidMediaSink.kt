@@ -107,8 +107,10 @@ internal class AudioFocusCoordinator(
     }
 
     private fun refreshRequest() {
-        val primary = active.values.maxByOrNull { it.channel.focusPriority() }
+        val primary = active.values.filter { it.channel != AudioChannel.NAVIGATION }
+            .maxByOrNull { it.channel.focusPriority() }
             ?: mediaAttributes?.takeIf { !mediaSuppressed }?.let { Entry(AudioChannel.MEDIA, it) }
+            ?: active.values.firstOrNull { it.channel == AudioChannel.NAVIGATION }
         if (primary == null) {
             requestGeneration++
             request?.let { manager?.abandonAudioFocusRequest(it) }
@@ -155,10 +157,14 @@ internal class AudioFocusCoordinator(
     }
 
     private fun applyVolumes() {
+        val navigationActive = active.values.any { it.channel == AudioChannel.NAVIGATION }
         active.forEach { (track, entry) ->
-            val localVolume = if (!factoryRouting || entry.channel == requestedChannel || requestedChannel == AudioChannel.MEDIA) FULL_VOLUME
-                else if (requestedChannel == AudioChannel.NAVIGATION && entry.channel == AudioChannel.MEDIA) DUCKED_VOLUME
-                else 0f
+            val localVolume = when {
+                !factoryRouting -> FULL_VOLUME
+                entry.channel == AudioChannel.MEDIA && navigationActive -> DUCKED_VOLUME
+                entry.channel == requestedChannel || requestedChannel == AudioChannel.MEDIA -> FULL_VOLUME
+                else -> 0f
+            }
             val volume = if (factoryRouting && mediaSuppressed && entry.channel == AudioChannel.MEDIA) 0f else focusVolume * localVolume
             runCatching { track.setStereoVolume(volume, volume) }
         }
