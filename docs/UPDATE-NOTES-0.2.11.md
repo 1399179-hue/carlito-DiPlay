@@ -2,6 +2,7 @@
 
 ## 本次更新
 
+- 修复部分车机音乐正常但导航提示音无声的问题。
 - HUD 投影会列出车机当前开放的副屏，可选择自动匹配或手动指定目标屏幕，并记住选择。
 - HUD 诊断会记录悬浮窗权限、所选屏幕、当前连接屏幕和可用副屏，便于定位无显示问题。
 - 无线连接可为下一次连接选择 Wi-Fi Direct 信道；“自动”仍是默认选项。
@@ -21,6 +22,7 @@
 
 ## What’s new
 
+- Fix silent navigation prompts on head units that play music normally but cannot decode Opus guidance audio.
 - HUD projection lists active secondary displays, supports automatic or manual selection, and remembers the target.
 - HUD diagnostics record overlay permission, the selected and attached screens, and all available secondary displays.
 - Choose a preferred Wi-Fi Direct channel for the next connection while keeping Auto as the default.

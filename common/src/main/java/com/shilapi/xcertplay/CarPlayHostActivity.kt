@@ -14,6 +14,7 @@ import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.media.MediaCodec
 import android.media.MediaCodecList
 import android.media.MediaFormat
 import android.os.Build
@@ -107,6 +108,16 @@ import java.util.concurrent.atomic.AtomicBoolean
 class CarPlayHostActivity : ComponentActivity() {
     private val geelyFactory by lazy { GeelyFactoryCarPlay.load(applicationContext) }
     private val factoryCarIcons by lazy { geelyFactory?.icons().orEmpty() }
+    private val opusOutputSupported by lazy {
+        val decoder = try {
+            MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_AUDIO_OPUS)
+        } catch (error: Exception) {
+            appendLog("Audio Opus decoder unavailable; requesting PCM guidance (${error.javaClass.simpleName})")
+            return@lazy false
+        }
+        runCatching { decoder.release() }
+        true
+    }
     private data class CarIconSelection(val icons: List<AirPlayIcon>, val statusRes: Int)
     private data class SettingsBaseline(
         val safeAreaSize: DisplaySize?,
@@ -2979,6 +2990,7 @@ class CarPlayHostActivity : ComponentActivity() {
             cluster = clusterDisplayConfig(),
             rightHandDrive = rightHandDrive,
             hevc = hevcEnabled,
+            opusOutputSupported = opusOutputSupported,
             microphone = microphoneAvailable,
             manufacturer = normalizedManufacturer(),
             model = normalizedModel(),

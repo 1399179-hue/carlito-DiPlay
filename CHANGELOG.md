@@ -1,5 +1,6 @@
 # DiPlay 0.2.11 — 2026-10-03
 
+- Fall back to PCM navigation prompts when a head unit cannot create an Opus decoder, fixing silent guidance while media audio continues normally.
 - Let users choose any active secondary display for Geely HUD projection, remember the selected screen, and include HUD screen status in user-submitted diagnostic reports. See [fork update notes](docs/UPDATE-NOTES-0.2.11.md).
 - Add preferred Wi-Fi Direct channel selection for the next connection; Auto remains the default, and manual channel rejection/mismatch reports an error (#175).
 - Add a movable custom dashboard turn card with 2% position steps; leave unknown arrows blank and clear expired guidance (#155).
