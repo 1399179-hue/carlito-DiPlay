@@ -453,12 +453,7 @@ class WifiP2pGroupManager(
                 else -> throw IOException("Wi-Fi P2P returned an unsupported band at ${frequencyMHz}MHz")
             }
 
-            val hostAddress = awaitInterfaceAddress(attempt, interfaceName, deadlineNanos)
-                ?: requestConnectionAddress(
-                    attempt = attempt,
-                    channel = channel,
-                    timeoutNanos = minOf(remainingNanos(deadlineNanos), REQUEST_POLL_NANOS),
-                )
+            val hostAddress = resolveHostAddress(attempt, interfaceName, channel, deadlineNanos)
             if (hostAddress == null) {
                 lastReason = "interface $interfaceName has no usable IPv6 or IPv4 address"
                 continue
@@ -532,7 +527,7 @@ class WifiP2pGroupManager(
                 lastReason = "the group owner address is not assigned to an interface yet"
                 continue
             }
-            val hostAddress = awaitInterfaceAddress(attempt, interfaceName, deadlineNanos)
+            val hostAddress = resolveHostAddress(attempt, interfaceName, channel, deadlineNanos)
                 ?: ownerAddress
 
             return WirelessHotspotInfo(
@@ -645,14 +640,44 @@ class WifiP2pGroupManager(
         startupDeadlineNanos: Long,
     ): InetAddress? {
         // Prefer IPv4, but a platform that assigns the group no lease at all still has to work, so
-        // give IPv4 a bounded chance to appear before accepting the link-local fallback.
-        val addressDeadline = minOf(startupDeadlineNanos, deadlineAfter(2_000))
+        // give IPv4 a bounded chance to appear before accepting the link-local fallback. Measured on
+        // a Xiaomi Mi 6: the group-owner IPv4 lease lands 2-6s after the group is reported created,
+        // so the window has to match the 6s the upstream receiver uses or the link-local fe80::
+        // wins and is handed to iOS in 0x4301 (tcpAccepted=0 forever).
+        val addressDeadline = minOf(startupDeadlineNanos, deadlineAfter(IPV4_LEASE_WAIT_MILLIS))
         while (true) {
             ensureStartActive(attempt)
             val address = interfaceAddress(interfaceName)
             if (address is Inet4Address || remainingNanos(addressDeadline) <= 0) return address
-            Thread.sleep(100)
+            Thread.sleep(IPV4_LEASE_POLL_MILLIS)
         }
+    }
+
+    /**
+     * The address handed to the handset as the AirPlay receiver in 0x4301 wirelessIP.
+     *
+     * The interface read is only a snapshot of [NetworkInterface.getNetworkInterfaces]; the framework
+     * reports the P2P group as created before the vendor stack has leased the group-owner IPv4, so
+     * that read can still be link-local-only. [requestConnectionAddress] returns the authoritative
+     * group-owner IPv4 from WifiP2pInfo. Prefer a routable address from either source and only accept
+     * a link-local fe80:: when neither yields IPv4 — iOS cannot route an unscoped link-local address,
+     * so advertising one leaves the handset associated but silent.
+     */
+    private fun resolveHostAddress(
+        attempt: StartAttempt,
+        interfaceName: String,
+        channel: WifiP2pManager.Channel,
+        startupDeadlineNanos: Long,
+    ): InetAddress? {
+        val interfaceAddress = awaitInterfaceAddress(attempt, interfaceName, startupDeadlineNanos)
+        if (interfaceAddress is Inet4Address) return interfaceAddress
+        val ownerAddress = requestConnectionAddress(
+            attempt = attempt,
+            channel = channel,
+            timeoutNanos = minOf(remainingNanos(startupDeadlineNanos), REQUEST_POLL_NANOS),
+        )
+        if (ownerAddress is Inet4Address) return ownerAddress
+        return interfaceAddress ?: ownerAddress
     }
 
     private data class Station(val state: SupplicantState?, val reportedFrequency: Int?) {
@@ -881,6 +906,8 @@ class WifiP2pGroupManager(
         const val NANOS_PER_MILLISECOND = 1_000_000L
         const val REMOVE_GROUP_TIMEOUT_MILLIS = 2_000L
         val REQUEST_POLL_NANOS: Long = TimeUnit.MILLISECONDS.toNanos(500)
+        const val IPV4_LEASE_WAIT_MILLIS = 6_000L
+        const val IPV4_LEASE_POLL_MILLIS = 250L
         const val TOKEN_ALPHABET =
             "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
     }
