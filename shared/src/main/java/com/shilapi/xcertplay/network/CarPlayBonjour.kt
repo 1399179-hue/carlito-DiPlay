@@ -242,9 +242,10 @@ class CarPlayBonjour(
                     // discovers AirPlay. When no interface name is supplied, or the responder cannot
                     // bind, fall back to the daemon so the path keeps working on non-p2p links.
                     if (advertisedInterface != null) {
+                        val interfaceName = advertisedInterface
                         val responder = runCatching {
                             CarPlayMdnsResponder(
-                                interfaceName = advertisedInterface,
+                                interfaceName = interfaceName,
                                 instanceName = "${config.deviceName}.${CarPlayMdnsProtocol.AIRPLAY_SERVICE_TYPE}",
                                 hostName = "${advertisedHostLabel()}.local",
                                 port = config.port,
