@@ -88,7 +88,7 @@ class ManualHotspotManager(
         // /data/system/car/wifi_ap_state does not exist on this firmware. Without this, a manual
         // entry that the user typed correctly still could not be advertised, because the session
         // has no real SSID/passphrase/BSSID to hand the phone.
-        val tcam = LynkTcamHotspotReader.read(context)
+        val tcam = LynkTcamHotspotReader.read(appContext)
         if (tcam != null) {
             onDiagnostic("TCAM hotspot: enabled=${tcam.enabled} ssidKnown=${tcam.ssid != null} " +
                 "passphraseKnown=${tcam.passphrase != null} band=${tcam.band} channel=${tcam.channel}")
