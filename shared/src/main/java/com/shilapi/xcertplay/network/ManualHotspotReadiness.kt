@@ -42,7 +42,9 @@ internal fun selectHotspotInterface(snapshot: HotspotNetworkSnapshot, log: (Stri
         // leaving tcpAccepted=0 and the session stalled at WiFi_discovery_or_AirPlay_TCP. Accept
         // only an IPv4 host address; a null result keeps the readiness loop sampling until the
         // AP's IPv4 is configured. This intentionally diverges from upstream's manual-AP == P2P
-        // link-local parity (WirelessHostAddress.wirelessHostAddress still prefers link-local).
+        // link-local parity; WirelessHostAddress.wirelessHostAddress (used by the existing-Wi-Fi
+        // backend) now applies the same IPv4-first rule, so every backend advertises an address the
+        // handset can actually dial.
         val address = iface.addresses.firstOrNull {
             it is Inet4Address && !it.isLoopbackAddress && !it.isLinkLocalAddress &&
                 !it.isAnyLocalAddress && !it.isMulticastAddress
