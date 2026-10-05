@@ -2816,7 +2816,9 @@ class CarPlayHostActivity : ComponentActivity() {
         }
         val modes = buildList {
             add(WirelessHotspotMode.AUTOMATIC to getString(R.string.automatic_connection))
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Wi-Fi Direct is usable from API 28: Android 9 only lacks the credentials/band
+            // setters, and the group is then created with system-generated credentials.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 add(WirelessHotspotMode.WIFI_P2P to getString(R.string.wifi_direct))
             }
             add(WirelessHotspotMode.MANUAL to getString(R.string.built_in_car_hotspot))

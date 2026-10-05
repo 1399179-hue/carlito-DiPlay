@@ -133,7 +133,12 @@ class AutomaticHotspotManager(
             LocalOnlyHotspotManager(appContext, onDiagnostic)
         }
         val generated = mutableListOf(local)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        // Android 9 can still create a Wi-Fi Direct group, but only with system-generated
+        // credentials on a firmware-chosen channel: WifiP2pConfig.Builder and
+        // WifiP2pGroup.getInterface()/getFrequency() all arrived in API 29. Offer the backend
+        // from API 28 so a head unit that refuses LocalOnlyHotspot still has a fallback, and
+        // keep the explicit-frequency plan for the API levels that can express it.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             generated += Attempt(WirelessHotspotBackend.WIFI_P2P, WIFI_P2P_MILLIS) {
                 WifiP2pGroupManager(appContext, onDiagnostic, wifiP2pPreferredChannel)
             }

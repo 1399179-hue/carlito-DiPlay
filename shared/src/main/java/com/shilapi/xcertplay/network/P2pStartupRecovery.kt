@@ -1,6 +1,7 @@
 package com.shilapi.xcertplay.network
 
 import android.net.wifi.p2p.WifiP2pManager
+import android.os.Build
 import java.io.IOException
 
 internal enum class P2pCreationMode { ALIGNED_5_GHZ, ALIGNED_2_GHZ, FIXED_5_GHZ, FIXED_2_GHZ, SYSTEM_DEFAULT, PREFERRED_CHANNEL }
@@ -25,7 +26,16 @@ internal object P2pStartupRecovery {
 
     /** A band-only request still needs channel selection, which some BYD drivers cannot do. */
     fun plan(stationFrequency: Int?, preferred: P2pCreationRequest? = null,
-             preferredChannel: Int = WifiP2pChannels.AUTO): List<P2pCreationRequest> = buildList {
+             preferredChannel: Int = WifiP2pChannels.AUTO,
+             apiLevel: Int = Build.VERSION_CODES.Q): List<P2pCreationRequest> = buildList {
+        // Android 9 exposes neither WifiP2pConfig.Builder nor the band/frequency fields, so the
+        // only group the framework can create uses system-generated credentials on a
+        // firmware-chosen channel. Asking for a specific frequency there is impossible, and
+        // retrying the same indistinguishable request would only stall the bring-up.
+        if (apiLevel < Build.VERSION_CODES.Q) {
+            add(P2pCreationRequest(P2pCreationMode.SYSTEM_DEFAULT))
+            return@buildList
+        }
         WifiP2pChannels.frequencyMhz(preferredChannel)?.let {
             add(P2pCreationRequest(P2pCreationMode.PREFERRED_CHANNEL, it))
             return@buildList
@@ -56,9 +66,10 @@ internal object P2pStartupRecovery {
         beforeRetry: () -> Unit,
         preferred: P2pCreationRequest? = null,
         preferredChannel: Int = WifiP2pChannels.AUTO,
+        apiLevel: Int = Build.VERSION_CODES.Q,
         request: (P2pCreationRequest) -> Unit,
     ): P2pCreationRequest {
-        val modes = plan(stationFrequency, preferred, preferredChannel)
+        val modes = plan(stationFrequency, preferred, preferredChannel, apiLevel)
         var lastRejection: P2pCreateRejected? = null
         for ((index, mode) in modes.withIndex()) {
             var retriedBusy = false

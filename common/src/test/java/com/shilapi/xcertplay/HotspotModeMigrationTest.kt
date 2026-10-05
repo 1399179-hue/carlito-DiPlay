@@ -35,8 +35,11 @@ class HotspotModeMigrationTest {
         assertEquals(WirelessHotspotMode.WIFI_P2P, AirPlayPersistence.loadWirelessHotspotMode(context))
     }
 
-    @Test @Config(sdk = [28]) fun olderAndroidDoesNotFallBackToRemovedLocalMode() {
+    @Test @Config(sdk = [28]) fun wifiDirectSelectionSurvivesOnAndroidNine() {
+        // Wi-Fi Direct group creation is reachable from API 28: Android 9 only lacks the
+        // credentials/band setters, and WifiP2pGroupManager falls back to the system-generated
+        // group. The stored selection must therefore not be folded into AUTOMATIC any more.
         prefs.edit().putString("wireless_hotspot_mode", "WIFI_P2P").apply()
-        assertEquals(WirelessHotspotMode.AUTOMATIC, AirPlayPersistence.loadWirelessHotspotMode(context))
+        assertEquals(WirelessHotspotMode.WIFI_P2P, AirPlayPersistence.loadWirelessHotspotMode(context))
     }
 }

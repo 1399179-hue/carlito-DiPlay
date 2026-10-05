@@ -308,8 +308,11 @@ object AirPlayPersistence {
         val stored = prefs.getString(KEY_WIRELESS_HOTSPOT_MODE, null)
         val mode = WirelessHotspotMode.entries.firstOrNull { it.name == stored }
             ?: WirelessHotspotMode.AUTOMATIC
+        // Wi-Fi Direct group creation is reachable from API 28: Android 9 lacks only the
+        // credentials/band setters, and WifiP2pGroupManager falls back to the system-generated
+        // group there. Only LocalOnlyHotspot stays folded into AUTOMATIC.
         val supported = if (mode == WirelessHotspotMode.LOCAL_ONLY_HOTSPOT ||
-            (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && mode == WirelessHotspotMode.WIFI_P2P)
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.P && mode == WirelessHotspotMode.WIFI_P2P)
         ) WirelessHotspotMode.AUTOMATIC else mode
         if (stored != supported.name) saveWirelessHotspotMode(context, supported)
         return supported

@@ -98,8 +98,13 @@ class WifiP2pGroupManager(
     }
 
     override fun start(timeoutMillis: Long): WirelessHotspotInfo {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            throw IOException("Wi-Fi P2P credentials require Android 10 (API 29) or newer")
+        // Android 9 can create a Wi-Fi Direct group, but only through the overload that lets the
+        // framework generate the credentials: WifiP2pConfig.Builder, its band/frequency setters
+        // and WifiP2pGroup.getInterface()/getFrequency() all arrived in API 29. Below that the
+        // group lands on a firmware-chosen channel, which is why the explicit-frequency plan is
+        // replaced by a single system-default request on those releases.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            throw IOException("Wi-Fi P2P requires Android 9 (API 28) or newer")
         }
         check(Looper.myLooper() != Looper.getMainLooper()) {
             "WifiP2pGroupManager.start must not run on the main thread"
@@ -148,7 +153,9 @@ class WifiP2pGroupManager(
                 callbackThread = thread
             }
 
-            logP2pState(attempt, p2pChannel)
+            // The P2P state callback is API 29+; skip it instead of letting the missing method
+            // take down an Android 9 bring-up.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) logP2pState(attempt, p2pChannel)
             // Preferences disappear on reinstall, but the scoped namespace survives.
             val existing = requestGroupInfo(attempt, p2pChannel, REQUEST_POLL_NANOS, requireResponse = true)
             diagnostic("Wi-Fi P2P existingGroup=${existing != null}")
@@ -170,6 +177,7 @@ class WifiP2pGroupManager(
                 stationFrequency = stationFrequency,
                 preferred = preferred?.request,
                 preferredChannel = preferredChannel,
+                apiLevel = Build.VERSION.SDK_INT,
                 beforeRetry = {
                     ensureStartActive(attempt)
                     // Do not cancel discovery, toggle Wi-Fi, or remove a newly observed group.
@@ -184,7 +192,12 @@ class WifiP2pGroupManager(
                 request = { selection ->
                     ensureStartActive(attempt)
                     if (remainingNanos(deadlineNanos) == 0L) throw IOException("Wi-Fi Direct startup timed out")
-                    val config = if (selection.mode == P2pCreationMode.SYSTEM_DEFAULT) null else {
+                    // Android 9 has no WifiP2pConfig.Builder, so the system-default request is the
+                    // only shape available there; it is also what a null config already means.
+                    val customConfigSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                    val config = if (!customConfigSupported ||
+                        selection.mode == P2pCreationMode.SYSTEM_DEFAULT
+                    ) null else {
                         P2pConfigBuildDiagnostics.build(Build.VERSION.SDK_INT, selection, diagnostic) {
                             val builder = WifiP2pConfig.Builder()
                                 .setNetworkName(credentials.ssid)
@@ -212,7 +225,13 @@ class WifiP2pGroupManager(
                     val usingRemembered = preferred?.request == selection
                     if (usingRemembered) synchronized(stateLock) { rememberedAttempt = preferred }
                     try {
-                        p2pManager.createGroup(p2pChannel, config, createActionListener(attempt, request))
+                        if (customConfigSupported) {
+                            p2pManager.createGroup(p2pChannel, config, createActionListener(attempt, request))
+                        } else {
+                            // Android 9 only has createGroup(Channel, ActionListener); the
+                            // three-argument overload would raise NoSuchMethodError there.
+                            p2pManager.createGroup(p2pChannel, createActionListener(attempt, request))
+                        }
                         awaitGroupCreated(attempt, request, deadlineNanos, timeoutMillis)
                     } catch (failure: P2pCreateRejected) {
                         if (usingRemembered && failure.reason == WifiP2pManager.ERROR && preferred != null) {
@@ -222,13 +241,24 @@ class WifiP2pGroupManager(
                     }
                 },
             )
-            val group = awaitUsableGroup(
-                attempt = attempt,
-                channel = p2pChannel,
-                credentials = if (creation.mode == P2pCreationMode.SYSTEM_DEFAULT) null else credentials,
-                deadlineNanos = deadlineNanos,
-                timeoutMillis = timeoutMillis,
-            )
+            // Android 9 cannot report the group's interface or operating frequency, so it needs
+            // the discovery-based reader below instead of the API 29 accessors.
+            val group = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                awaitUsableGroup(
+                    attempt = attempt,
+                    channel = p2pChannel,
+                    credentials = if (creation.mode == P2pCreationMode.SYSTEM_DEFAULT) null else credentials,
+                    deadlineNanos = deadlineNanos,
+                    timeoutMillis = timeoutMillis,
+                )
+            } else {
+                awaitUsableGroupWithoutRadioDetails(
+                    attempt = attempt,
+                    channel = p2pChannel,
+                    deadlineNanos = deadlineNanos,
+                    timeoutMillis = timeoutMillis,
+                )
+            }
             if (!ownership.edit().putString("owned_ssid", group.ssid).commit()) {
                 throw IOException("Could not record Wi-Fi P2P group ownership")
             }
@@ -448,6 +478,86 @@ class WifiP2pGroupManager(
                 backend = WirelessHotspotBackend.WIFI_P2P,
             )
         }
+    }
+
+    /**
+     * Android 9 variant of [awaitUsableGroup].
+     *
+     * [WifiP2pGroup.getInterface] and [WifiP2pGroup.getFrequency] are API 29 additions, so the
+     * interface is resolved from the group owner address reported by the connection callback and
+     * the band stays unknown. The channel is reported as 0 (unknown) instead of being guessed:
+     * the iAP2 payload must not echo a band the radio never confirmed.
+     */
+    private fun awaitUsableGroupWithoutRadioDetails(
+        attempt: StartAttempt,
+        channel: WifiP2pManager.Channel,
+        deadlineNanos: Long,
+        timeoutMillis: Long,
+    ): WirelessHotspotInfo {
+        var lastReason = "group information was not available"
+        while (true) {
+            ensureStartActive(attempt)
+            val remainingNanos = remainingNanos(deadlineNanos)
+            if (remainingNanos <= 0) {
+                throw IOException(
+                    "Timed out after ${timeoutMillis}ms waiting for a usable Wi-Fi P2P group: " +
+                        lastReason,
+                )
+            }
+
+            val group = requestGroupInfo(
+                attempt = attempt,
+                channel = channel,
+                timeoutNanos = minOf(remainingNanos, REQUEST_POLL_NANOS),
+            )
+            if (group == null) continue
+            if (!group.isGroupOwner) {
+                throw IOException("Wi-Fi P2P device became a group client instead of owner")
+            }
+
+            val networkName = group.networkName?.takeIf { it.isNotBlank() }
+            val passphrase = group.passphrase?.takeIf { it.isNotBlank() }
+            if (networkName == null || passphrase == null) {
+                lastReason = "incomplete group details"
+                continue
+            }
+
+            val ownerAddress = requestConnectionAddress(
+                attempt = attempt,
+                channel = channel,
+                timeoutNanos = minOf(remainingNanos(deadlineNanos), REQUEST_POLL_NANOS),
+            )
+            val interfaceName = ownerAddress?.let(::interfaceOwningAddress)
+            if (interfaceName == null) {
+                lastReason = "the group owner address is not assigned to an interface yet"
+                continue
+            }
+            val hostAddress = awaitInterfaceAddress(attempt, interfaceName, deadlineNanos)
+                ?: ownerAddress
+
+            return WirelessHotspotInfo(
+                ssid = networkName,
+                passphrase = passphrase,
+                security = groupSecurity(group),
+                channel = 0,
+                frequencyMHz = null,
+                bssid = interfaceHardwareAddress(interfaceName)
+                    ?: group.owner?.deviceAddress?.takeIf { it.isNotBlank() },
+                interfaceName = interfaceName,
+                hostAddress = hostAddress,
+                bandLabel = "unknown",
+                backend = WirelessHotspotBackend.WIFI_P2P,
+            )
+        }
+    }
+
+    /** Resolves the interface owning [address], replacing WifiP2pGroup.getInterface() on API 28. */
+    private fun interfaceOwningAddress(address: InetAddress): String? = try {
+        Collections.list(NetworkInterface.getNetworkInterfaces()).firstOrNull { candidate ->
+            Collections.list(candidate.inetAddresses).any { it == address }
+        }?.name
+    } catch (_: SocketException) {
+        null
     }
 
     private fun requestGroupInfo(

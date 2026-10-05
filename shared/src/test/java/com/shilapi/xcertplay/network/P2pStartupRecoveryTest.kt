@@ -191,6 +191,33 @@ class P2pStartupRecoveryTest {
         assertTrue(plan.size <= 7)
     }
 
+    @Test fun androidNinePlansOnlyTheSystemDefaultGroup() {
+        // Android 9 has no WifiP2pConfig.Builder and no band/frequency fields, so every explicit
+        // channel request is impossible and must collapse into one system-default attempt. Asking
+        // for a frequency the framework cannot express would only stall the bring-up.
+        val station = 5180
+        for (apiLevel in listOf(28, 27)) {
+            assertEquals(listOf(P2pCreationRequest(P2pCreationMode.SYSTEM_DEFAULT)),
+                P2pStartupRecovery.plan(station, apiLevel = apiLevel))
+            assertEquals(listOf(P2pCreationRequest(P2pCreationMode.SYSTEM_DEFAULT)),
+                P2pStartupRecovery.plan(station, preferredChannel = 149, apiLevel = apiLevel))
+            assertEquals(listOf(P2pCreationRequest(P2pCreationMode.SYSTEM_DEFAULT)),
+                P2pStartupRecovery.plan(null, apiLevel = apiLevel))
+        }
+        // The explicit-frequency plan stays in force from Android 10 on.
+        assertEquals(listOf(5180, 5745, 2437, 2412, 2462, null),
+            P2pStartupRecovery.plan(station, apiLevel = 29).map { it.frequencyMHz })
+    }
+
+    @Test fun androidNineCreatesOnceAndDoesNotRetryAChannelItCannotRequest() {
+        var attempts = mutableListOf<P2pCreationRequest>()
+        val mode = P2pStartupRecovery.create(5180, { fail("Unexpected retry") }, apiLevel = 28) {
+            attempts += it
+        }
+        assertEquals(listOf(P2pCreationRequest(P2pCreationMode.SYSTEM_DEFAULT)), attempts)
+        assertEquals(P2pCreationMode.SYSTEM_DEFAULT, mode.mode)
+    }
+
     @Test fun permissionUnsupportedAndUncertainTimeoutNeverTriggerAnotherCreation() {
         for (failure in listOf(P2pCreateRejected(WifiP2pManager.NO_PERMISSION, "permission"),
             P2pCreateRejected(WifiP2pManager.P2P_UNSUPPORTED, "unsupported"), IOException("timeout"))) {
