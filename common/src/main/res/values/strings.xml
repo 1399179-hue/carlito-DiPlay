@@ -132,7 +132,6 @@
     <string name="back_to_diplay">Back to DiPlay</string>
     <string name="band">Band</string>
     <string name="bluetooth_settings">Bluetooth settings</string>
-    <string name="byd_navigation">BYD navigation</string>
     <string name="cancel">Cancel</string>
     <string name="car_home">Car home</string>
     <string name="car_hotspot_details">Car hotspot details</string>
@@ -581,7 +580,7 @@
     <string name="hotspot_control_unsupported">This firmware does not support automatic hotspot startup. Open the hotspot in car settings.</string>
     <string name="hotspot_control_timeout">Timed out waiting for the car hotspot. Open the hotspot in car settings.</string>
     <string name="hotspot_control_failed">The car could not start its hotspot. Open the hotspot in car settings.</string>
-    <string name="byd_adb_features">BYD features · needs ADB</string>
+    <string name="byd_adb_features">ADB features · needs ADB</string>
     <string name="location_reporting_reconnects">Changing this setting reconnects an active CarPlay session.</string>
     <string name="factory_car_icon">Factory car icon</string>
     <string name="geely_vehicle">Geely vehicle</string>

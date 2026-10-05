@@ -125,7 +125,6 @@
     <string name="back_to_diplay">返回 DiPlay</string>
     <string name="band">频段</string>
     <string name="bluetooth_settings">蓝牙设置</string>
-    <string name="byd_navigation">比亚迪导航</string>
     <string name="cancel">取消</string>
     <string name="car_home">车机主页</string>
     <string name="car_hotspot_details">车机热点详情</string>
@@ -581,7 +580,7 @@
     <string name="hotspot_control_unsupported">当前固件不支持自动开启热点，请在车机设置中开启。</string>
     <string name="hotspot_control_timeout">等待车机热点开启超时，请在车机设置中开启。</string>
     <string name="hotspot_control_failed">车机热点开启失败，请在车机设置中开启。</string>
-    <string name="byd_adb_features">比亚迪功能 · 需要 ADB</string>
+    <string name="byd_adb_features">ADB 功能 · 需要 ADB</string>
     <string name="location_reporting_reconnects">更改此设置会重新连接当前 CarPlay 会话。</string>
     <string name="factory_car_icon">原厂桌面图标</string>
     <string name="geely_vehicle">吉利车机</string>

@@ -124,7 +124,6 @@
     <string name="back_to_diplay">العودة إلى DiPlay</string>
     <string name="band">النطاق</string>
     <string name="bluetooth_settings">إعدادات بلوتوث</string>
-    <string name="byd_navigation">ملاحة BYD</string>
     <string name="cancel">إلغاء</string>
     <string name="car_home">الرئيسية داخل السيارة</string>
     <string name="car_hotspot_details">بيانات نقطة اتصال السيارة</string>
@@ -550,7 +549,7 @@
     <string name="hotspot_control_unsupported">النظام لا يدعم تشغيل نقطة الاتصال تلقائيًا. افتح إعدادات السيارة لتشغيلها.</string>
     <string name="hotspot_control_timeout">انتهت مهلة انتظار تشغيل نقطة الاتصال. افتح إعدادات السيارة لتشغيلها.</string>
     <string name="hotspot_control_failed">تعذر تشغيل نقطة الاتصال. افتح إعدادات السيارة لتشغيلها.</string>
-    <string name="byd_adb_features">ميزات BYD · تتطلب ADB</string>
+    <string name="byd_adb_features">ميزات ADB · تتطلب ADB</string>
     <string name="location_reporting_reconnects">يؤدي تغيير هذا الإعداد إلى إعادة اتصال جلسة CarPlay النشطة.</string>
     <string name="return_home_icon">أيقونة العودة إلى شاشة السيارة</string>
     <string name="return_home_icon_description">اختر صورة مربعة لزر CarPlay الذي يعيدك إلى شاشة السيارة. ستظهر الأيقونة الجديدة عند الاتصال التالي.</string>

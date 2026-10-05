@@ -124,7 +124,6 @@
     <string name="back_to_diplay">Volver a DiPlay</string>
     <string name="band">Banda</string>
     <string name="bluetooth_settings">Ajustes de Bluetooth</string>
-    <string name="byd_navigation">Navegación BYD</string>
     <string name="cancel">Cancelar</string>
     <string name="car_home">Inicio del coche</string>
     <string name="car_hotspot_details">Datos del punto de acceso del coche</string>
@@ -550,7 +549,7 @@
     <string name="hotspot_control_unsupported">El firmware no admite el inicio automático del punto de acceso. Actívalo en los ajustes del coche.</string>
     <string name="hotspot_control_timeout">Se agotó el tiempo de espera del punto de acceso. Actívalo en los ajustes del coche.</string>
     <string name="hotspot_control_failed">No se pudo iniciar el punto de acceso. Actívalo en los ajustes del coche.</string>
-    <string name="byd_adb_features">Funciones BYD · requieren ADB</string>
+    <string name="byd_adb_features">Funciones ADB · requieren ADB</string>
     <string name="location_reporting_reconnects">Cambiar este ajuste vuelve a conectar la sesión activa de CarPlay.</string>
     <string name="return_home_icon">Icono de regreso a la pantalla del coche</string>
     <string name="return_home_icon_description">Elige una imagen cuadrada para el botón de CarPlay que vuelve a la pantalla del coche. Se usará en la próxima conexión.</string>

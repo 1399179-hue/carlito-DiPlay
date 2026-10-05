@@ -124,7 +124,6 @@
     <string name="back_to_diplay">Вернуться в DiPlay</string>
     <string name="band">Диапазон</string>
     <string name="bluetooth_settings">Настройки Bluetooth</string>
-    <string name="byd_navigation">Навигация BYD</string>
     <string name="cancel">Отмена</string>
     <string name="car_home">Главная в автомобиле</string>
     <string name="car_hotspot_details">Данные точки доступа автомобиля</string>
@@ -550,7 +549,7 @@
     <string name="hotspot_control_unsupported">Прошивка не поддерживает автоматическое включение точки доступа. Откройте настройки автомобиля.</string>
     <string name="hotspot_control_timeout">Истекло время ожидания включения точки доступа. Откройте настройки автомобиля.</string>
     <string name="hotspot_control_failed">Не удалось включить точку доступа. Откройте настройки автомобиля.</string>
-    <string name="byd_adb_features">Функции BYD · нужен ADB</string>
+    <string name="byd_adb_features">Функции ADB · нужен ADB</string>
     <string name="location_reporting_reconnects">Изменение этой настройки перезапускает активное подключение CarPlay.</string>
     <string name="return_home_icon">Значок возврата на главный экран автомобиля</string>
     <string name="return_home_icon_description">Выберите квадратное изображение для кнопки CarPlay, возвращающей на главный экран автомобиля. Новый значок появится при следующем подключении.</string>

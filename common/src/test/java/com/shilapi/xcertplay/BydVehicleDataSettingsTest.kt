@@ -188,25 +188,15 @@ class BydVehicleDataSettingsTest {
         assertTrue(texts().any { it.text == activity.getString(R.string.probe_vehicle_data_again) })
     }
 
-    @Test fun clusterSongSwitchStaysInTheBydNavigationSectionOnly() {
+    @Test fun theBydNavigationSectionAndItsClusterSongSwitchAreGone() {
+        // The BYD navigation / HUD / cluster entry was removed from the settings UI: the target
+        // head unit is a Geely ECARX unit, so no BYD-branded section is rendered any more and the
+        // cluster-song switch that lived in it is no longer offered anywhere.
         shadowOf(context.packageManager).installPackage(PackageInfo().apply { packageName = "com.byd.amapservice" })
         openSettings()
 
-        assertTrue(texts().any { it.text == activity.getString(R.string.byd_navigation) })
-        assertEquals(1, switches().count { it.contentDescription == activity.getString(R.string.cluster_song) })
-        texts().single { it.text == activity.getString(R.string.advanced_vehicle_data) }.performClick()
-        assertEquals(1, switches().count { it.contentDescription == activity.getString(R.string.cluster_song) })
-    }
-
-    @Test fun withoutBydNavigationTheClusterSongSwitchIsUnderAdvancedVehicleData() {
-        openSettings()
-        assertFalse(texts().any { it.text == activity.getString(R.string.byd_navigation) })
+        assertFalse(texts().any { it.text == activity.getString(R.string.cluster_song) })
         assertFalse(switches().any { it.contentDescription == activity.getString(R.string.cluster_song) })
-
-        texts().single { it.text == activity.getString(R.string.advanced_vehicle_data) }.performClick()
-        vehicleSwitch(R.string.cluster_song).performClick()
-
-        assertTrue(BydOutputSettings.clusterSong(context))
     }
 
     @Test fun scheduledValidationCannotLeaveAUserProbeStuck() {
