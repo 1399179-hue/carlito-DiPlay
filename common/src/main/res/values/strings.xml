@@ -714,4 +714,13 @@
     <string name="first_tcp_timeout">The iPhone did not connect to CarPlay in time</string>
     <string name="wireless_startup_retries_exhausted">Automatic retries stopped. Check the connection and retry manually.</string>
     <string name="retry_carplay_connection">Retry connection</string>
+    <string name="navigation_output_title">Navigation output device</string>
+    <string name="navigation_output_summary">Navigation output: %1$s</string>
+    <string name="navigation_output_auto">Automatic</string>
+    <string name="navigation_output_device_label">%1$s #%2$d</string>
+    <string name="navigation_output_speaker">Speaker</string>
+    <string name="navigation_output_number">Device number (blank for automatic)</string>
+    <string name="navigation_output_preview">Play test sound</string>
+    <string name="navigation_output_unavailable">Device unavailable</string>
+    <string name="navigation_output_test_note">Select a device or enter its number, then play a test sound to find the speaker you want.</string>
 </resources>

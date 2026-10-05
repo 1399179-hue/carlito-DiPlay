@@ -99,8 +99,13 @@ internal class AudioFocusCoordinator(
         if (closed) return
         mediaSuppressed = false
         focusVolume = FULL_VOLUME
+        // Discard queued focus callbacks from the call and renew media focus after the HAL mode changes.
+        requestGeneration++
+        request?.let { manager?.abandonAudioFocusRequest(it) }
+        request = null
+        requestedChannel = null
+        focusHeld = false
         refreshRequest()
-        if (requestedChannel == AudioChannel.MEDIA) requestCurrentFocus()
         applyVolumes()
     }
 
@@ -218,6 +223,8 @@ class AndroidMediaSink(
     /** True while any music ("media") audio stream is running; called from media threads. */
     private val onMediaAudioChanged: (Boolean) -> Unit = {},
     private val wirelessAudio: Boolean = false,
+    private val videoFps: Int = 60,
+    private val navigationOutputDevice: AudioOutputDevice? = null,
 ) : MediaSink {
     private val appContext = context?.applicationContext
     private val factoryAudio = appContext?.let(GeelyFactoryCarPlay::load)
@@ -239,6 +246,8 @@ class AndroidMediaSink(
     private val audioRenderers = ConcurrentHashMap<AudioStreamId, AudioRenderer>()
     private val microphoneUplinks = ConcurrentHashMap<AudioStreamId, MicrophoneUplink>()
     private val audioModeLock = Any()
+    private val closingTelephonyRenderers = mutableSetOf<AudioRenderer>()
+    @Volatile private var closed = false
     private var communicationModeStream: AudioStreamId? = null
     private var savedAudioMode = AudioManager.MODE_NORMAL
     private val pendingVideoCodec = ConcurrentHashMap<Int, VideoCodec>()
@@ -347,11 +356,11 @@ class AndroidMediaSink(
     }
 
     override fun onAudioStarted(id: AudioStreamId, format: AudioFormat, firstSample: Int) {
-        audioRenderer(id, format).start()
-        if (format.audioType == "media") updateMediaAudio(id, true)
         if (format.audioType == "telephony") synchronized(telephonyAudioTypes) {
             telephonyAudioTypes.add(id)
         }
+        audioRenderer(id, format).start()
+        if (format.audioType == "media") updateMediaAudio(id, true)
     }
 
     override fun onAudioRtp(id: AudioStreamId, format: AudioFormat, rtp: ByteArray, sample: Int) {
@@ -359,15 +368,28 @@ class AndroidMediaSink(
     }
 
     override fun onAudioStopped(id: AudioStreamId) {
-        audioRenderers.remove(id)?.close()
+        val renderer = audioRenderers.remove(id)
+        if (renderer?.format?.audioType == "telephony") synchronized(audioModeLock) {
+            closingTelephonyRenderers.add(renderer)
+        }
         updateMediaAudio(id, false)
         val callEnded = synchronized(telephonyAudioTypes) {
             telephonyAudioTypes.remove(id) && telephonyAudioTypes.isEmpty()
         }
-        if (callEnded) {
-            restoreAudioMode(null)
+        renderer?.close()
+        if (callEnded && renderer?.format?.audioType != "telephony") finishCommunication(force = true)
+    }
+
+    private fun finishCommunication(force: Boolean = false) {
+        synchronized(audioModeLock) {
+            if (closed || closingTelephonyRenderers.isNotEmpty()) return
+            if (synchronized(telephonyAudioTypes) { telephonyAudioTypes.isNotEmpty() }) return
+            if (communicationModeStream?.let(microphoneUplinks::containsKey) == true) return
+            if (!force && communicationModeStream == null) return
+            if (communicationModeStream != null && !restoreAudioMode(null)) return
             audioFocusCoordinator.onCommunicationEnded()
-            runCatching { onAudioDiagnostic("Audio: communication ended; media route restored") }
+            audioRenderers.values.filter { it.format.audioType == "media" }.forEach { it.resumeAfterCommunication() }
+            runCatching { onAudioDiagnostic("Audio: communication resources released; media focus and playback renewed") }
         }
     }
 
@@ -390,7 +412,7 @@ class AndroidMediaSink(
             }
             if (!uplink.start()) {
                 microphoneUplinks.remove(id, uplink)
-                if (restoreAudioMode(id)) audioFocusCoordinator.onCommunicationEnded()
+                finishCommunication()
             }
         } catch (error: Exception) {
             Log.e("xcertplay-usb", "microphone start failed stream=$id", error)
@@ -403,7 +425,7 @@ class AndroidMediaSink(
         try {
             microphoneUplinks.remove(id)?.close()
         } finally {
-            if (restoreAudioMode(id)) audioFocusCoordinator.onCommunicationEnded()
+            finishCommunication()
         }
     }
 
@@ -424,18 +446,25 @@ class AndroidMediaSink(
         return synchronized(audioModeLock) {
             val active = communicationModeStream ?: return@synchronized false
             if (id != null && id != active) return@synchronized false
-            communicationModeStream = null
             try {
                 manager.mode = savedAudioMode
-                Log.i("xcertplay-usb", "audio mode restored to ${manager.mode}")
+                val restored = manager.mode
+                if (restored != savedAudioMode) {
+                    Log.w("xcertplay-usb", "audio mode restoration pending: requested=$savedAudioMode actual=$restored")
+                    return@synchronized false
+                }
+                communicationModeStream = null
+                Log.i("xcertplay-usb", "audio mode restored to $restored")
             } catch (error: RuntimeException) {
                 Log.w("xcertplay-usb", "could not restore audio mode $savedAudioMode", error)
+                return@synchronized false
             }
             true
         }
     }
 
     fun close() {
+        closed = true
         audioFocusCoordinator.close()
         synchronized(screenStateLock) {
             activeScreenTypes.forEach { screenStreamActiveChanged?.invoke(it, false) }
@@ -474,6 +503,7 @@ class AndroidMediaSink(
         videoWidth,
         videoHeight,
         preferSoftwareHevcDecoder,
+        videoFps,
         requestKeyFrame = { requestVideoRecovery(type) },
         report = { videoDiagnosticHandlers[type]?.invoke(it) },
         statsLabel = statsLabel,
@@ -495,6 +525,12 @@ class AndroidMediaSink(
             mediaBufferMillis,
             onAudioDiagnostic,
             factoryAudio,
+            audioManager,
+            navigationOutputDevice,
+            onReleased = { renderer ->
+                val callReleased = synchronized(audioModeLock) { closingTelephonyRenderers.remove(renderer) }
+                if (callReleased) finishCommunication(force = true)
+            },
         ).also { audioRenderers[id] = it }
     }
 
@@ -508,6 +544,7 @@ private class VideoDecoder(
     private val width: Int,
     private val height: Int,
     private val preferSoftwareHevcDecoder: Boolean,
+    private val fps: Int,
     private val requestKeyFrame: () -> Unit,
     private val report: (String) -> Unit,
     statsLabel: String? = null,
@@ -556,7 +593,7 @@ private class VideoDecoder(
                             if (System.nanoTime() - job.receivedNs > MAX_FRAME_AGE_NS) {
                                 queue.discardFrames()
                                 recover("video backlog exceeded 250 ms")
-                            } else feed(job.nalus)
+                            } else feed(job)
                         }
                         is VideoJob.SurfaceChanged -> changeSurface(job.surface)
                         is VideoJob.Resync -> recover("video queue overflow")
@@ -617,10 +654,14 @@ private class VideoDecoder(
         }
         // Some vendor decoders (e.g. MediaTek c2.mtk.avc.decoder) reject the tuned
         // parameters with BAD_VALUE. Fall back to a minimal format, then to software.
-        val attempts = listOf(
-            DecoderAttempt(codecName = null, tuned = true),
-            DecoderAttempt(codecName = null, tuned = false),
-        ) + softwareDecoderName(mime)?.let { listOf(DecoderAttempt(it, tuned = false)) }.orEmpty()
+        val candidates = VideoDecoderSupport.candidates(mime, width, height, fps)
+        val softwareOnly = codec == VideoCodec.H265 && preferSoftwareHevcDecoder
+        val preferred = candidates.filter { VideoDecoderSupport.isHardware(it) != softwareOnly }
+        val attempts = preferred.flatMap {
+            listOf(DecoderAttempt(it.name, tuned = true), DecoderAttempt(it.name, tuned = false))
+        } + listOf(DecoderAttempt(codecName = null, tuned = true), DecoderAttempt(codecName = null, tuned = false)) +
+            candidates.filter { !VideoDecoderSupport.isHardware(it) }
+                .map { DecoderAttempt(it.name, tuned = false) }
         var next: MediaCodec? = null
         for (attempt in attempts) {
             next = tryConfigure(mime, csd, surface, attempt)
@@ -683,13 +724,6 @@ private class VideoDecoder(
         }
     }
 
-    private fun softwareDecoderName(mime: String): String? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
-        return MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.firstOrNull {
-            !it.isEncoder && it.isSoftwareOnly && mime in it.supportedTypes
-        }?.name
-    }
-
     private fun createDecoder(mime: String): MediaCodec {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
             mime == MediaFormat.MIMETYPE_VIDEO_HEVC &&
@@ -731,7 +765,8 @@ private class VideoDecoder(
         lastConfig?.let(::configureDecoder)
     }
 
-    private fun feed(nalus: ByteArray) {
+    private fun feed(frame: VideoJob.Frame) {
+        val nalus = frame.nalus
         val annexB = MediaCodecSupport.toAnnexB(nalus)
         val config = lastConfig ?: return
         if (outputSurface == null) return
@@ -754,11 +789,15 @@ private class VideoDecoder(
             dequeue = { codec.dequeueInputBuffer(INPUT_TIMEOUT_US) },
         )
         if (index < 0) { recover("video decoder input stalled"); return }
+        if (System.nanoTime() - frame.receivedNs > MAX_FRAME_AGE_NS) {
+            recover("video frame expired while waiting for decoder input")
+            return
+        }
         val input = checkNotNull(codec.getInputBuffer(index)) { "Decoder input buffer unavailable" }
         input.clear()
         if (annexB.size <= input.remaining()) {
             input.put(annexB)
-            codec.queueInputBuffer(index, 0, annexB.size, System.nanoTime() / 1000, 0)
+            codec.queueInputBuffer(index, 0, annexB.size, frame.receivedNs / 1000, 0)
             referenceChain.onQueued()
         } else {
             recover("video frame exceeded codec input capacity")
@@ -781,7 +820,8 @@ private class VideoDecoder(
         val now = System.nanoTime()
         if (lastKeyFrameRequestNs != 0L && now - lastKeyFrameRequestNs < 1_000_000_000L) return
         lastKeyFrameRequestNs = now
-        requestKeyFrame()
+        runCatching { requestKeyFrame() }
+            .onFailure { reportFailure("stage=requestKeyFrame", it) }
     }
 
     private fun drainOutput(codec: MediaCodec) {
@@ -792,7 +832,9 @@ private class VideoDecoder(
                 index == MediaCodec.INFO_TRY_AGAIN_LATER -> return
                 index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> logOutputFormat(codec.outputFormat)
                 index >= 0 -> {
-                    val render = outputSurface != null
+                    // Output frames can be skipped without breaking the decoder's reference chain.
+                    val render = outputSurface != null &&
+                        System.nanoTime() - info.presentationTimeUs * 1000 <= MAX_FRAME_AGE_NS
                     codec.releaseOutputBuffer(index, render)
                     if (render) stats.onRendered()
                     if (render && !renderedFrameLogged) {
@@ -885,6 +927,9 @@ private class AudioRenderer(
     private val mediaBufferMillis: Int,
     private val report: (String) -> Unit,
     private val factoryAudio: GeelyFactoryCarPlay?,
+    private val audioManager: AudioManager?,
+    private val navigationOutputDevice: AudioOutputDevice?,
+    private val onReleased: (AudioRenderer) -> Unit,
 ) : Closeable {
     private data class AudioPacket(val rtp: ByteArray, val sample: Int)
 
@@ -893,6 +938,8 @@ private class AudioRenderer(
     private val queue = LinkedBlockingQueue<AudioPacket>(MAX_QUEUED_PACKETS)
     @Volatile private var running = true
     @Volatile private var started = false
+    private var released = false
+    private val resumeRequested = AtomicBoolean(false)
     private var codec: MediaCodec? = null
     private var softwareOpusDecoder: SoftwareOpusDecoder? = null
     private var track: AudioTrack? = null
@@ -936,8 +983,9 @@ private class AudioRenderer(
     private var decoderOutputReports = 0
     private val thread = Thread(::run, "carplay-audio").apply { isDaemon = true }
 
+    @Synchronized
     fun start() {
-        if (started) return
+        if (started || !running) return
         started = true
         thread.start()
     }
@@ -959,9 +1007,16 @@ private class AudioRenderer(
         }
     }
 
+    @Synchronized
     override fun close() {
         running = false
         thread.interrupt()
+        if (!started) release()
+        else if (released) runCatching { onReleased(this) }
+    }
+
+    fun resumeAfterCommunication() {
+        if (running) resumeRequested.set(true)
     }
 
     private fun run() {
@@ -983,6 +1038,13 @@ private class AudioRenderer(
             diagnosticStage = "focus"
             requestAudioFocus()
             while (running) {
+                if (resumeRequested.getAndSet(false) && playbackStarted) {
+                    track?.let { output ->
+                        output.pause()
+                        output.play()
+                        underrunsAtPlaybackStart = output.underrunCount
+                    }
+                }
                 diagnosticStage = "packet"
                 queue.poll(AUDIO_POLL_MILLIS, TimeUnit.MILLISECONDS)?.let(::handle)
                 // Output becomes ready asynchronously, including after the last packet of a burst.
@@ -1113,6 +1175,11 @@ private class AudioRenderer(
             )
         }
         track = built
+        if (selection.channel == AudioChannel.NAVIGATION && navigationOutputDevice != null) {
+            val device = navigationOutputDevice.resolve(audioManager)
+            val accepted = device != null && runCatching { built.setPreferredDevice(device) }.getOrDefault(false)
+            runCatching { report("Audio: navigation preferredDevice=${device?.id ?: -1} accepted=$accepted fallback=${!accepted}") }
+        }
         diagnosticStage = "track-attributes"
         trackAttributes = audioTrackAttributesForFocus(built, attributes)
         diagnosticStage = "track-capacity"
@@ -1150,7 +1217,7 @@ private class AudioRenderer(
     /** 0 uses usage-based routing; 1–20 attempt legacy stream types supported by the head unit. */
     private fun channelOverride(channel: AudioChannel): Int = when (channel) {
         AudioChannel.MEDIA -> mediaChannel
-        AudioChannel.NAVIGATION -> navigationChannel
+        AudioChannel.NAVIGATION -> if (navigationOutputDevice == null) navigationChannel else 0
         else -> 0
     }
 
@@ -1209,10 +1276,6 @@ private class AudioRenderer(
             return
         }
         track?.let { audioFocusCoordinator.acquire(it, channel, attributes) }
-    }
-
-    private fun abandonAudioFocus() {
-        track?.let(audioFocusCoordinator::release)
     }
 
     private fun pcmFormat(encoding: Int, channelMask: Int) = AndroidAudioFormat.Builder()
@@ -1536,7 +1599,7 @@ private class AudioRenderer(
         }
         val queuedFrames = playbackHeadFrames?.let { (totalWrittenFrames - it).coerceAtLeast(0L) }
         val line = "audio stats audioType=${format.audioType} channel=$mappedChannel " +
-            "routeType=${currentTrack?.routedDevice?.type ?: -1} codec=${format.codec} " +
+            "routeType=${currentTrack?.routedDevice?.type ?: -1} routeDevice=${currentTrack?.routedDevice?.id ?: -1} codec=${format.codec} " +
             "trackState=${currentTrack?.state ?: -1} playState=${currentTrack?.playState ?: -1} " +
             "sampleRate=${currentTrack?.sampleRate ?: format.sampleRate} " +
             "trackBufferFrames=${currentTrack?.bufferSizeInFrames ?: -1} " +
@@ -1600,7 +1663,8 @@ private class AudioRenderer(
 
     @Synchronized
     private fun release() {
-        abandonAudioFocus()
+        if (released) return
+        val releasedTrack = track
         val codec = codec
         this.codec = null
         softwareOpusDecoder = null
@@ -1635,6 +1699,11 @@ private class AudioRenderer(
                 // Best effort.
             }
         }
+        runCatching { releasedTrack?.let(audioFocusCoordinator::release) }
+            .onFailure { error -> runCatching { report("Audio: focus release failed: ${error.message}") } }
+        released = true
+        runCatching { onReleased(this) }
+            .onFailure { error -> runCatching { report("Audio: communication recovery failed: ${error.message}") } }
     }
 
     private companion object {

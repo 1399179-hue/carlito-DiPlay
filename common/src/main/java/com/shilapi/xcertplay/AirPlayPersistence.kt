@@ -20,6 +20,7 @@ import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 import com.shilapi.xcertplay.network.WifiP2pChannels
 import com.shilapi.xcertplay.transport.LockdownPairRecord
 import com.shilapi.xcertplay.vehicle.GeelyFactoryCarPlay
+import com.shilapi.xcertplay.media.AudioOutputDevice
 import java.io.File
 
 /** SharedPreferences persistence for the accessory identity and paired controllers. */
@@ -222,16 +223,11 @@ object AirPlayPersistence {
 
     fun loadNavigationAudioChannel(context: Context): Int {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val factoryDefault = if (GeelyFactoryCarPlay.load(context) != null) {
-            loadNavigationStreamType(context)
-        } else {
-            0
-        }
-        // Inherit the legacy value only when the new key is absent. Factory Geely units default
-        // to their navigation stream; an explicitly saved 0 still keeps automatic usage routing.
+        // The factory receiver routes navigation by usage, not a universal stream number.
+        // Inherit an explicitly saved legacy choice only when the new key is absent.
         return prefs.getInt(
             KEY_NAVIGATION_AUDIO_CHANNEL,
-            prefs.getInt(KEY_NAVIGATION_STREAM_TYPE, factoryDefault),
+            prefs.getInt(KEY_NAVIGATION_STREAM_TYPE, 0),
         )
             .takeIf { it in AUDIO_CHANNELS } ?: 0
     }
@@ -240,6 +236,15 @@ object AirPlayPersistence {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putInt(KEY_NAVIGATION_AUDIO_CHANNEL, channel.takeIf { it in AUDIO_CHANNELS } ?: 0)
             .apply()
+    }
+
+    fun loadNavigationOutputDevice(context: Context): AudioOutputDevice? = AudioOutputDevice.decode(
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("navigation_output_device", null),
+    )
+
+    fun saveNavigationOutputDevice(context: Context, device: AudioOutputDevice?) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("navigation_output_device", device?.encode()).apply()
     }
 
     fun loadWirelessEnabled(context: Context): Boolean =

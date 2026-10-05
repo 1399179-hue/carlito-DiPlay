@@ -2,6 +2,9 @@
 // UI copy and visual language adapted from DiAuto. See docs/THIRD_PARTY_NOTICES.md.
 package com.shilapi.xcertplay
 
+import androidx.core.widget.doAfterTextChanged
+import com.shilapi.xcertplay.media.AudioOutputDevice
+
 import android.Manifest
 import android.app.AlertDialog
 import android.app.Dialog
@@ -646,6 +649,7 @@ class DiPlayActivity : ComponentActivity() {
             }
             mediaChannelControl(card)
             navigationChannelControl(card)
+            navigationOutputControl(card)
         }
         section(content, getString(R.string.location), R.drawable.ic_dp_navigation) { card ->
             toggle(card, getString(R.string.report_location_to_iphone),
@@ -1326,7 +1330,7 @@ class DiPlayActivity : ComponentActivity() {
     }
 
     private fun showChannelDialog(title: String, current: Int, navigation: Boolean, onApply: (Int) -> Unit) {
-        val preview = AudioChannelPreview { channel ->
+        val preview = AudioChannelPreview(this) { channel ->
             toast(getString(R.string.contrib_audio_home_channel_preview_unavailable, channel))
         }
         val channels = AirPlayPersistence.AUDIO_CHANNELS
@@ -1353,10 +1357,95 @@ class DiPlayActivity : ComponentActivity() {
     }
 
     private fun applyNavigationChannel(value: Int, previous: Int, control: Button, summary: (Int) -> String) {
-        if (value == previous) return
+        if (value == previous && AirPlayPersistence.loadNavigationOutputDevice(this) == null) return
         AirPlayPersistence.saveNavigationAudioChannel(this, value)
+        AirPlayPersistence.saveNavigationOutputDevice(this, null)
         control.text = summary(value)
+        render()
         if (CarPlayBackgroundSession.hasSession()) connect(AirPlayPersistence.loadWirelessEnabled(this))
+    }
+
+    private fun navigationOutputControl(parent: LinearLayout) {
+        val manager = getSystemService(android.media.AudioManager::class.java)
+        val saved = AirPlayPersistence.loadNavigationOutputDevice(this)
+        val current = saved?.resolve(manager)
+        fun deviceLabel(device: android.media.AudioDeviceInfo): String {
+            val name = device.productName.toString().trim()
+                .takeIf { it.isNotBlank() && '/' !in it && '\\' !in it }
+                ?: getString(R.string.navigation_output_speaker)
+            return getString(R.string.navigation_output_device_label, name, device.id)
+        }
+        val value = when {
+            current != null -> deviceLabel(current)
+            saved != null -> getString(R.string.navigation_output_unavailable)
+            else -> getString(R.string.navigation_output_auto)
+        }
+        val control = button(getString(R.string.navigation_output_summary, value), false) {}
+        control.setOnClickListener {
+            val devices = AudioOutputDevice.outputs(manager)
+            val previous = AirPlayPersistence.loadNavigationOutputDevice(this)
+            val resolved = previous?.resolve(manager)
+            val preview = AudioChannelPreview(this) { toast(getString(R.string.navigation_output_unavailable)) }
+            val fields = column().apply { setPadding(dp(24), dp(12), dp(24), dp(12)) }
+            val number = EditText(this).apply {
+                hint = getString(R.string.navigation_output_number)
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                setSingleLine()
+                setText((resolved?.id ?: previous?.id)?.toString().orEmpty())
+            }
+            fields.addView(number)
+            fields.addView(label(getString(R.string.navigation_output_test_note), 14, MUTED))
+            fun selection(): AudioOutputDevice? {
+                val text = number.text.toString().trim()
+                if (text.isEmpty()) return null
+                val id = text.toIntOrNull()
+                val device = AudioOutputDevice.outputs(manager).firstOrNull { it.id == id }
+                if (device == null) {
+                    number.error = getString(R.string.navigation_output_unavailable)
+                    throw IllegalArgumentException("Output device unavailable")
+                }
+                return AudioOutputDevice.from(device)
+            }
+            fields.addView(button(getString(R.string.navigation_output_preview), false) {
+                runCatching { selection() }.onSuccess { output ->
+                    preview.play(if (output == null) AirPlayPersistence.loadNavigationAudioChannel(this) else 0, true, output)
+                }
+            }, matchButton(8, 52))
+            val labels = arrayOf(getString(R.string.navigation_output_auto), *devices.map(::deviceLabel).toTypedArray())
+            val selected = if (previous == null) 0 else devices.indexOfFirst { it.id == resolved?.id }
+                .let { if (it < 0) -1 else it + 1 }
+            val dialog = AlertDialog.Builder(this).setTitle(R.string.navigation_output_title)
+                .setSingleChoiceItems(labels, selected) { _, which ->
+                    number.error = null
+                    number.setText(if (which == 0) "" else devices[which - 1].id.toString())
+                }
+                .setView(fields)
+                .setPositiveButton(if (CarPlayBackgroundSession.hasSession()) R.string.apply_and_reconnect else R.string.save, null)
+                .setNegativeButton(R.string.cancel, null)
+                .setOnDismissListener { preview.close() }.create()
+            dialog.setOnShowListener {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    runCatching { selection() }.onSuccess { output ->
+                        AirPlayPersistence.saveNavigationOutputDevice(this, output)
+                        if (output != null) AirPlayPersistence.saveNavigationAudioChannel(this, 0)
+                        dialog.dismiss()
+                        render()
+                        if (CarPlayBackgroundSession.hasSession()) connect(AirPlayPersistence.loadWirelessEnabled(this))
+                    }
+                }
+            }
+            dialog.show()
+            number.doAfterTextChanged { text ->
+                number.error = null
+                val value = text.toString().trim()
+                val index = if (value.isEmpty()) 0 else devices.indexOfFirst { it.id == value.toIntOrNull() }
+                    .let { if (it < 0) -1 else it + 1 }
+                dialog.listView.clearChoices()
+                if (index >= 0) dialog.listView.setItemChecked(index, true)
+                dialog.listView.invalidateViews()
+            }
+        }
+        parent.addView(control, matchButton(0, 60))
     }
 
     private fun channelLabel(value: Int): String = value.toString()
