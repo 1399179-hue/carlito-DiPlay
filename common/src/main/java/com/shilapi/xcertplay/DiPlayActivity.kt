@@ -2897,7 +2897,7 @@ class DiPlayActivity : ComponentActivity() {
         appendLine("--- Standalone HUD compatibility ---")
         appendLine(BydOutputSettings.standaloneHudDiagnosticReport(appContext))
         appendLine()
-        appendLine("--- BYD vehicle-data probe ---")
+        appendLine("--- Vehicle-data probe ---")
         appendLine(
             "mode=${if (BydOutputSettings.legacyVehicleProbe(appContext)) "legacy-probe" else "default"} " +
                 "switches location=${AirPlayPersistence.loadLocationReportingEnabled(appContext)} " +
