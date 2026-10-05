@@ -1295,7 +1295,10 @@ class CarPlayController(
                 // Bind discovery and its connect probe to the same AP/address family as AirPlay.
                 // The car hotspot previously used system NSD, which could resolve another interface
                 // or IPv6 while the listener/probe was bound to the AP's IPv4 address.
+                // advertisedInterface routes the AirPlay advertisement through the raw-socket
+                // responder on the group interface; the system NSD daemon will not publish there.
                 useInterfaceMdns = true,
+                advertisedInterface = hotspotInfo.interfaceName,
                 onEvent = { event -> debugLog("wireless bonjour: ${event.diagnosticSummary()}") },
                 additionalAddresses = hotspotInfo.hostAddresses.filter { it != hostAddress },
             )
