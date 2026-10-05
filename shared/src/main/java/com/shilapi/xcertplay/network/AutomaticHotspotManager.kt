@@ -138,10 +138,19 @@ class AutomaticHotspotManager(
         // WifiP2pGroup.getInterface()/getFrequency() all arrived in API 29. Offer the backend
         // from API 28 so a head unit that refuses LocalOnlyHotspot still has a fallback, and
         // keep the explicit-frequency plan for the API levels that can express it.
+        var p2p: Attempt? = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            generated += Attempt(WirelessHotspotBackend.WIFI_P2P, WIFI_P2P_MILLIS) {
+            p2p = Attempt(WirelessHotspotBackend.WIFI_P2P, WIFI_P2P_MILLIS) {
                 WifiP2pGroupManager(appContext, onDiagnostic, wifiP2pPreferredChannel)
             }
+            // Try Wi-Fi Direct before LocalOnly. An MFi-paired CarPlay handshake is built around a
+            // Wi-Fi Direct group: the handset joins the group we advertise and addresses us inside
+            // it. A local-only hotspot satisfies "an access point exists", so it succeeds here while
+            // producing a network the handset will not complete a session on -- which then gets
+            // remembered as the last confirmed backend and preferred on every later attempt. Leading
+            // with the backend that merely starts is what made AUTOMATIC mode report success and
+            // then go quiet, with no P2P group ever formed.
+            generated.add(0, p2p)
         }
         val remembered = preferences.getString(KEY_LAST_BACKEND, null)
             ?.let { name -> WirelessHotspotBackend.entries.firstOrNull { it.name == name } }
