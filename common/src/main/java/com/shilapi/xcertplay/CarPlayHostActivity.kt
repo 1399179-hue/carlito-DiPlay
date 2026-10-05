@@ -827,8 +827,19 @@ class CarPlayHostActivity : ComponentActivity() {
             return
         }
         if (clusterPresentation != null) return
-        val display = ClusterMapPresentation.findDisplay(this, theme) ?: run {
-            appendLog("Cluster map: no cluster projection display among ${ClusterMapPresentation.describeDisplays(this)}")
+        // 领克/吉利: the cluster display stays hidden until the car's own navigation service hands it
+        // over, which is a plain Binder switch on those units. A BYD unit does not publish that
+        // service, so acquire() is a no-op there and the name-based lookup below still applies.
+        val geelyCluster = GeelyClusterDisplayTargets.find(this)?.display
+        if (geelyCluster != null) {
+            appendLog("Cluster map: geely projection acquire=${GeelyClusterDisplayControl.acquire()}")
+        }
+        val display = geelyCluster ?: ClusterMapPresentation.findDisplay(this, theme) ?: run {
+            appendLog(
+                "Cluster map: no cluster projection display among " +
+                    "${ClusterMapPresentation.describeDisplays(this)}; " +
+                    GeelyClusterDisplayTargets.describe(this),
+            )
             return
         }
         val presentation = ClusterMapPresentation(this, display, theme) { surface -> runOnUiThread { onClusterSurface(surface) } }
@@ -836,6 +847,7 @@ class CarPlayHostActivity : ComponentActivity() {
         presentation.setOnDismissListener {
             if (clusterPresentation === presentation) {
                 clusterPresentation = null
+                GeelyClusterDisplayControl.release()
                 com.shilapi.xcertplay.hud.BydNavigationOutputs.setClusterMapShown(false)
                 updateClusterMapShown()
             }
@@ -850,6 +862,7 @@ class CarPlayHostActivity : ComponentActivity() {
             appendLog("Cluster map: presentation shown display=${display.displayId} name=${display.name}")
         } catch (error: RuntimeException) {
             Log.w(ClusterMapPresentation.TAG, "cluster presentation failed", error)
+            GeelyClusterDisplayControl.release()
             appendLog("Cluster map: presentation failed ${error.javaClass.simpleName}: ${error.message}")
         }
     }
@@ -916,6 +929,9 @@ class CarPlayHostActivity : ComponentActivity() {
 
     private fun dismissClusterPresentation() {
         ClusterActivityOutput.stop(this)
+        // Give the cluster back before the presentation goes away, so the car never sits in
+        // projection mode with nothing drawing on it.
+        GeelyClusterDisplayControl.release()
         val presentations = (clusterLayers.values + listOfNotNull(clusterPresentation)).distinct()
         clusterLayers.clear()
         clusterPresentation = null

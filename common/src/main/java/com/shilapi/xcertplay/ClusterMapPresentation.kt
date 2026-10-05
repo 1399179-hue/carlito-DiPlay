@@ -163,6 +163,11 @@ internal class ClusterMapPresentation(
 
         /** Keep the 5/5.1 selection order, then try the measured DiLink 4 projection display. */
         fun findDisplay(context: Context, theme: DiLink51ClusterLayout.Theme = DiLink51ClusterLayout.theme(context)): Display? {
+            // Geely/ECARX units publish the cluster as a plain presentation display whose uniqueId
+            // and size are firmware data, so the BYD name lookups below never match there. Gated on
+            // the car's projection service, which a BYD unit does not publish, so its path is
+            // untouched.
+            GeelyClusterDisplayTargets.find(context)?.let { return it.display }
             val displays = context.getSystemService(DisplayManager::class.java)
                 ?.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION) ?: return null
             val name = DiLink51ClusterLayout.displayName(
