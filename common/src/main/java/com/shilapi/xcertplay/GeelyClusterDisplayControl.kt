@@ -113,7 +113,7 @@ internal object GeelyClusterDisplayControl {
      * own fallback: the cluster will simply stay as it was.
      */
     fun setShown(shown: Boolean): Boolean =
-        call(TRANSACTION_SET_SHOWN) { it.writeInt(if (shown) 1 else 0) } == 1
+        call(TRANSACTION_SET_SHOWN) { writeInt(if (shown) 1 else 0) } == 1
 
     fun diagnostics(): String =
         "geelyCluster available=${binder() != null} shown=${isShown() ?: "unknown"} " +
