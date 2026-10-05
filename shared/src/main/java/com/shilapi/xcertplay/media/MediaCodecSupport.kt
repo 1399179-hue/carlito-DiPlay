@@ -115,6 +115,29 @@ object MediaCodecSupport {
         return false
     }
 
+    /** Raw NAL units from either three- or four-byte Annex B start codes. */
+    fun annexBNalUnits(bytes: ByteArray): List<ByteArray> {
+        if (startCodeSize(bytes, 0) == 0) return emptyList()
+        val units = mutableListOf<ByteArray>()
+        var cursor = 0
+        while (cursor < bytes.size) {
+            val prefix = startCodeSize(bytes, cursor)
+            if (prefix == 0) return emptyList()
+            val start = cursor + prefix
+            cursor = start
+            while (cursor < bytes.size && startCodeSize(bytes, cursor) == 0) cursor++
+            if (cursor == start) return emptyList()
+            units.add(bytes.copyOfRange(start, cursor))
+        }
+        return units
+    }
+
+    private fun startCodeSize(bytes: ByteArray, offset: Int): Int {
+        if (offset + 3 > bytes.size || bytes[offset] != 0.toByte() || bytes[offset + 1] != 0.toByte()) return 0
+        if (bytes[offset + 2] == 1.toByte()) return 3
+        return if (offset + 4 <= bytes.size && bytes[offset + 2] == 0.toByte() && bytes[offset + 3] == 1.toByte()) 4 else 0
+    }
+
     /** Wraps one raw AAC-LC access unit in an MPEG-4 ADTS frame. */
     fun adtsFrame(accessUnit: ByteArray, sampleRate: Int, channels: Int): ByteArray {
         val frequencyIndex = aacFrequencyIndex(sampleRate)

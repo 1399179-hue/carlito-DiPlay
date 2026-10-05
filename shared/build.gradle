@@ -34,6 +34,7 @@ android {
 }
 dependencies {
     implementation libs.androidx.app
+    implementation libs.androidx.media3.container
     implementation libs.bouncycastle
     implementation libs.concentus
     implementation libs.jmdns

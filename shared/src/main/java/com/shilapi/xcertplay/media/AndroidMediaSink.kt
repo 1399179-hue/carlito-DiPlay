@@ -652,6 +652,12 @@ private class VideoDecoder(
                 pps.takeIf { it.isNotEmpty() }?.let { START_CODE + it },
             )
         }
+        // Ported from xcertplay-nomfi: hand the decoder the colour description the bitstream
+        // actually carries (SPS/VUI) instead of letting it guess from resolution or codec. The
+        // first CSD entry is start-code-prefixed and holds the SPS for both codecs, so it is the
+        // parse input. A parse failure only drops the colour hints; decoding still proceeds.
+        val parameters = csd.firstOrNull()
+            ?.let { runCatching { VideoParameters.parse(codec, it) }.getOrNull() }
         // Some vendor decoders (e.g. MediaTek c2.mtk.avc.decoder) reject the tuned
         // parameters with BAD_VALUE. Fall back to a minimal format, then to software.
         val candidates = VideoDecoderSupport.candidates(mime, width, height, fps)
@@ -664,7 +670,7 @@ private class VideoDecoder(
                 .map { DecoderAttempt(it.name, tuned = false) }
         var next: MediaCodec? = null
         for (attempt in attempts) {
-            next = tryConfigure(mime, csd, surface, attempt)
+            next = tryConfigure(mime, csd, surface, attempt, parameters)
             if (next != null) break
         }
         if (next == null) {
@@ -684,13 +690,30 @@ private class VideoDecoder(
 
     private data class DecoderAttempt(val codecName: String?, val tuned: Boolean)
 
-    private fun buildFormat(mime: String, csd: List<ByteArray>, tuned: Boolean): MediaFormat =
+    private fun buildFormat(
+        mime: String,
+        csd: List<ByteArray>,
+        tuned: Boolean,
+        parameters: VideoParameters?,
+    ): MediaFormat =
         MediaFormat.createVideoFormat(mime, width, height).apply {
             if (tuned) {
                 setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, MAX_INPUT_SIZE)
                 setInteger(MediaFormat.KEY_PRIORITY, 0)
             }
             csd.forEachIndexed { index, bytes -> setByteBuffer("csd-$index", ByteBuffer.wrap(bytes)) }
+            // Unspecified VUI fields stay unspecified; do not force full range or BT.709.
+            if (parameters != null) {
+                if (parameters.colorStandard != -1) {
+                    setInteger(MediaFormat.KEY_COLOR_STANDARD, parameters.colorStandard)
+                }
+                if (parameters.colorRange != -1) {
+                    setInteger(MediaFormat.KEY_COLOR_RANGE, parameters.colorRange)
+                }
+                if (parameters.colorTransfer != -1) {
+                    setInteger(MediaFormat.KEY_COLOR_TRANSFER, parameters.colorTransfer)
+                }
+            }
         }
 
     private fun tryConfigure(
@@ -698,10 +721,11 @@ private class VideoDecoder(
         csd: List<ByteArray>,
         surface: Surface,
         attempt: DecoderAttempt,
+        parameters: VideoParameters?,
     ): MediaCodec? {
         var candidate: MediaCodec? = null
         return try {
-            val format = buildFormat(mime, csd, attempt.tuned)
+            val format = buildFormat(mime, csd, attempt.tuned, parameters)
             val codec = attempt.codecName?.let { MediaCodec.createByCodecName(it) } ?: createDecoder(mime)
             candidate = codec
             if (attempt.tuned && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&

@@ -143,8 +143,12 @@ class CarPlayBonjour(
     private val onEvent: (CarPlayBonjourEvent) -> Unit = {},
     additionalAddresses: List<InetAddress> = emptyList(),
 ) : Closeable {
-    private val nsdManager = (context.applicationContext ?: context)
-        .getSystemService(Context.NSD_SERVICE) as NsdManager
+    // Some third-party head units expose no NSD service at all, and a plain `as NsdManager` then
+    // throws "null cannot be cast to non-null type android.net.nsd.NsdManager", taking the whole
+    // wireless bring-up down with it (upstream issue #209). Stay nullable and degrade instead;
+    // the interface-scoped JmDNS path below keeps working when NSD is missing.
+    private val nsdManager: NsdManager? = (context.applicationContext ?: context)
+        .getSystemService(Context.NSD_SERVICE) as? NsdManager
     private val services = LinkedBlockingQueue<NsdServiceInfo>()
     private val interfaceServices = LinkedBlockingQueue<Pair<CarPlayBonjourEndpoint, InetAddress>>()
     private val discoveryEvents = LinkedBlockingQueue<CarPlayBonjourEvent.Discovery>(32)
@@ -289,13 +293,18 @@ class CarPlayBonjour(
                     }
                 } else {
                     registerAirPlay()
-                    registrationRequested = true
-                    nsdManager.discoverServices(
-                        CARPLAY_CONTROL_SERVICE_TYPE,
-                        NsdManager.PROTOCOL_DNS_SD,
-                        discoveryListener,
-                    )
-                    discoveryRequested = true
+                    val nsd = nsdManager
+                    if (nsd == null) {
+                        Log.w(TAG, "NSD service unavailable; wireless control discovery is disabled")
+                    } else {
+                        registrationRequested = true
+                        nsd.discoverServices(
+                            CARPLAY_CONTROL_SERVICE_TYPE,
+                            NsdManager.PROTOCOL_DNS_SD,
+                            discoveryListener,
+                        )
+                        discoveryRequested = true
+                    }
                 }
                 worker = Thread(::runWorker, WORKER_NAME).apply {
                     isDaemon = true
@@ -305,11 +314,11 @@ class CarPlayBonjour(
                 closed = true
                 if (registrationRequested) {
                     registrationRequested = false
-                    runCatching { nsdManager.unregisterService(registrationListener) }
+                    runCatching { nsdManager?.unregisterService(registrationListener) }
                 }
                 if (discoveryRequested) {
                     discoveryRequested = false
-                    runCatching { nsdManager.stopServiceDiscovery(discoveryListener) }
+                    runCatching { nsdManager?.stopServiceDiscovery(discoveryListener) }
                 }
                 worker?.interrupt()
                 worker = null
@@ -330,11 +339,11 @@ class CarPlayBonjour(
             closed = true
             if (registrationRequested) {
                 registrationRequested = false
-                runCatching { nsdManager.unregisterService(registrationListener) }
+                runCatching { nsdManager?.unregisterService(registrationListener) }
             }
             if (discoveryRequested) {
                 discoveryRequested = false
-                runCatching { nsdManager.stopServiceDiscovery(discoveryListener) }
+                runCatching { nsdManager?.stopServiceDiscovery(discoveryListener) }
             }
             activeSocket?.let { socket -> runCatching { socket.close() } }
             activeSocket = null
@@ -355,6 +364,11 @@ class CarPlayBonjour(
 
     @Suppress("DEPRECATION")
     private fun registerAirPlay() {
+        val nsd = nsdManager
+        if (nsd == null) {
+            Log.w(TAG, "NSD service unavailable; the AirPlay service cannot be advertised")
+            return
+        }
         val serviceInfo = NsdServiceInfo().apply {
             serviceName = config.deviceName
             serviceType = AIRPLAY_SERVICE_TYPE
@@ -364,7 +378,7 @@ class CarPlayBonjour(
             }
             localAdvertisedAddress?.let(::setHost)
         }
-        nsdManager.registerService(
+        nsd.registerService(
             serviceInfo,
             NsdManager.PROTOCOL_DNS_SD,
             registrationListener,
@@ -464,8 +478,14 @@ class CarPlayBonjour(
                     if (closed) {
                         false
                     } else {
-                        nsdManager.resolveService(service, listener)
-                        true
+                        val nsd = nsdManager
+                        if (nsd == null) {
+                            Log.w(TAG, "NSD service unavailable; cannot resolve the control service")
+                            false
+                        } else {
+                            nsd.resolveService(service, listener)
+                            true
+                        }
                     }
                 }
             } catch (error: RuntimeException) {

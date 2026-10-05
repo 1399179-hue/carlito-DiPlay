@@ -63,6 +63,25 @@ class MediaCodecSupportTest {
         assertEquals(0, MediaCodecSupport.hevcCodecSpecificData(truncated).size)
     }
 
+    @Test
+    fun annexBSplitsMixedThreeAndFourByteStartCodes() {
+        val first = byteArrayOf(0x67, 0x10)
+        val second = byteArrayOf(0x68, 0x20, 0x30)
+        val units = MediaCodecSupport.annexBNalUnits(
+            byteArrayOf(0, 0, 0, 1) + first + byteArrayOf(0, 0, 1) + second,
+        )
+
+        assertEquals(2, units.size)
+        assertArrayEquals(first, units[0])
+        assertArrayEquals(second, units[1])
+    }
+
+    @Test
+    fun annexBRejectsInputWithoutALeadingStartCode() {
+        assertEquals(0, MediaCodecSupport.annexBNalUnits(byteArrayOf(0x67, 0x10, 0x20)).size)
+        assertEquals(0, MediaCodecSupport.annexBNalUnits(ByteArray(0)).size)
+    }
+
     private fun hevcRecord(vararg parameterSets: ByteArray): ByteArray {
         var size = 23
         parameterSets.forEach { size += 5 + it.size }
