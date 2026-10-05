@@ -65,13 +65,14 @@ internal class GeelySteeringWheelInputChannel(
     private val lock = Any()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lastRawUpAt = ConcurrentHashMap<Int, Long>()
-    @Volatile private var requestedKeys = GeelySteeringKeyCodes.supported
-    private var registeredKeys = intArrayOf()
+    @Volatile private var registeredKeys = intArrayOf()
     private var serviceManager: IBinder? = null
     private var inputManager: IBinder? = null
     private var bound = false
     private var enabled = false
     private var closed = false
+    private var lastFailure = "NONE"
+    private var serviceMetadata = "NOT_CHECKED"
 
     private val retryInputService = object : Runnable {
         override fun run() {
@@ -113,8 +114,7 @@ internal class GeelySteeringWheelInputChannel(
                 1 -> {
                     val action = data.readInt()
                     data.readInt() // OneOS soft-key function; the key code identifies the press.
-                    if (rawKeyCode >= GeelySteeringKeyCodes.EXTENDED_KEY_MIN &&
-                        keyCode in requestedKeys &&
+                    if (rawKeyCode in registeredKeys &&
                         (action == GeelySteeringKeyEvent.ACTION_DOWN || action == GeelySteeringKeyEvent.ACTION_UP)
                     ) {
                         if (action == GeelySteeringKeyEvent.ACTION_UP) lastRawUpAt[keyCode] = now
@@ -130,8 +130,7 @@ internal class GeelySteeringWheelInputChannel(
                         else -> null
                     }
                     val rawSequenceRecentlyCompleted = now - (lastRawUpAt[keyCode] ?: 0L) < RAW_GESTURE_WINDOW_MS
-                    if (rawKeyCode >= GeelySteeringKeyCodes.EXTENDED_KEY_MIN &&
-                        keyCode in requestedKeys &&
+                    if (rawKeyCode in registeredKeys &&
                         directAction != null &&
                         !rawSequenceRecentlyCompleted
                     ) {
@@ -193,18 +192,30 @@ internal class GeelySteeringWheelInputChannel(
     }
 
     fun diagnostics(): String = synchronized(lock) {
-        "oneOs enabled=$enabled bound=$bound input=${inputManager != null} registered=${registeredKeys.size}"
+        "oneOs enabled=$enabled bound=$bound input=${inputManager != null} registered=${registeredKeys.size} " +
+            "service=$serviceMetadata failure=$lastFailure"
     }
+
+    fun ready(): Boolean = synchronized(lock) { registeredKeys.isNotEmpty() }
 
     private fun bindLocked() {
         if (closed || !enabled || bound) return
+        serviceMetadata = runCatching {
+            @Suppress("DEPRECATION")
+            val info = app.packageManager.getServiceInfo(ComponentName(ONE_OS_PACKAGE, ONE_OS_SERVICE), 0)
+            "enabled=${info.enabled && info.applicationInfo.enabled},exported=${info.exported},permission=${info.permission ?: "NONE"}"
+        }.getOrElse { it.javaClass.simpleName }
         bound = runCatching {
             app.bindService(
                 Intent().setClassName(ONE_OS_PACKAGE, ONE_OS_SERVICE),
                 connection,
                 Context.BIND_AUTO_CREATE,
             )
-        }.onFailure { Log.w(TAG, "OneOS input service bind failed", it) }.getOrDefault(false)
+        }.onFailure {
+            lastFailure = "bind ${it.javaClass.simpleName}: ${it.message?.take(160)}"
+            Log.w(TAG, "OneOS input service bind failed", it)
+        }.getOrDefault(false)
+        if (!bound && lastFailure == "NONE") lastFailure = "service_not_bound"
         if (!bound) mainHandler.postDelayed(retryConnection, CONNECT_RETRY_MS)
     }
 
@@ -250,7 +261,10 @@ internal class GeelySteeringWheelInputChannel(
             },
             read = { Unit },
         ) != null
-        if (registered) registeredKeys = keyTable
+        if (registered) {
+            registeredKeys = keyTable
+            lastFailure = "NONE"
+        }
     }
 
     private fun releaseRegisteredLocked() {
@@ -282,10 +296,14 @@ internal class GeelySteeringWheelInputChannel(
         return try {
             data.writeInterfaceToken(descriptor)
             data.write()
-            if (!binder.transact(code, data, reply, 0)) return null
+            if (!binder.transact(code, data, reply, 0)) {
+                lastFailure = "transaction=$code unsupported"
+                return null
+            }
             reply.readException()
             reply.read()
         } catch (error: Throwable) {
+            lastFailure = "transaction=$code ${error.javaClass.simpleName}: ${error.message?.take(160)}"
             Log.w(TAG, "OneOS input transaction failed", error)
             null
         } finally {
@@ -296,15 +314,12 @@ internal class GeelySteeringWheelInputChannel(
 }
 
 internal object GeelySteeringKeyCodes {
-    const val EXTENDED_KEY_MIN = 100_000
     const val MEDIA_PLAY_PAUSE = 200_085
     const val MEDIA_NEXT = 200_087
     const val MEDIA_PREVIOUS = 200_088
     const val VOICE_ASSIST = 200_231
     const val SEEK_NEXT = 210_005
     const val SEEK_PREVIOUS = 210_006
-
-    val supported = intArrayOf(MEDIA_PLAY_PAUSE, MEDIA_NEXT, MEDIA_PREVIOUS, VOICE_ASSIST, SEEK_NEXT, SEEK_PREVIOUS)
 
     fun canonicalize(keyCode: Int): Int? = when (keyCode) {
         MEDIA_PLAY_PAUSE, 85 -> MEDIA_PLAY_PAUSE

@@ -2,6 +2,9 @@
 // UI copy and visual language adapted from DiAuto. See docs/THIRD_PARTY_NOTICES.md.
 package com.shilapi.xcertplay
 
+import androidx.core.widget.doAfterTextChanged
+import com.shilapi.xcertplay.media.AudioOutputDevice
+
 import android.Manifest
 import android.app.AlertDialog
 import android.app.Dialog
@@ -32,13 +35,13 @@ import android.widget.*
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.view.ViewCompat
 import androidx.core.view.doOnLayout
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.shilapi.xcertplay.adb.LocalAdb
 import com.shilapi.xcertplay.airplay.CarPlayClusterDisplay
+import com.shilapi.xcertplay.airplay.CarPlayDisplayScale
 import com.shilapi.xcertplay.airplay.ClusterTurnCardOverlay
 import com.shilapi.xcertplay.hud.BydAdbAccess
 import com.shilapi.xcertplay.hud.BydNavigationOutputs
@@ -65,6 +68,7 @@ class DiPlayActivity : ComponentActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private var page = "home"
     private var clusterSafeAreaDialog: Dialog? = null
+    private var clusterContentRequestVersion = 0L
     private var pendingCarHotspotSetup = false
     private var setupError: String? = null
     private var status: TextView? = null
@@ -156,6 +160,7 @@ class DiPlayActivity : ComponentActivity() {
     private val export = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         if (uri != null) exportDiagnostics(uri)
     }
+
     private val iconImageCrop = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) render()
     }
@@ -178,13 +183,12 @@ class DiPlayActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         languagePreferenceAtCreate = AppLocale.preference(this)
-        SteeringProfiles.scheduleUpload(this)
         com.shilapi.xcertplay.hud.BydNavigationOutputs.onAppOpened(applicationContext)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowCompat.setDecorFitsSystemWindows(window, true)
         window.statusBarColor = BG; window.navigationBarColor = BG
         WindowInsetsControllerCompat(window, window.decorView).apply {
             isAppearanceLightStatusBars = false
-            show(WindowInsetsCompat.Type.systemBars())
+            hide(WindowInsetsCompat.Type.statusBars())
         }
         setupError = runCatching { DiPlayBootstrap.ensure(this, AirPlayPersistence.loadMfiTarget(this)) }.exceptionOrNull()?.let {
             android.util.Log.e("DiPlaySetup", "CarPlay authentication could not be loaded", it)
@@ -214,9 +218,9 @@ class DiPlayActivity : ComponentActivity() {
     }
     override fun onSaveInstanceState(outState: Bundle) {
         reportIssueDescription = reportIssueInput?.text?.toString() ?: reportIssueDescription
+        outState.putString("report_issue_description", reportIssueDescription)
         outState.putString("page", page)
         outState.putBoolean("pending_car_hotspot", pendingCarHotspotSetup)
-        outState.putString("report_issue_description", reportIssueDescription)
         outState.putBoolean("byd_vehicle_advanced", bydVehicleAdvancedExpanded)
         super.onSaveInstanceState(outState)
     }
@@ -261,12 +265,14 @@ class DiPlayActivity : ComponentActivity() {
         }
     }
     override fun onPause() {
+        WheelKeyService.cancelLearning()
         pausedForAdbSwitchChange = adbSwitchChangePending
         handler.removeCallbacks(tick)
         super.onPause()
     }
 
     override fun onDestroy() {
+        WheelKeyService.cancelLearning()
         handler.removeCallbacks(automaticVehicleValidation)
         adbCheckGeneration++
         synchronized(vehicleOperationLock) {
@@ -292,27 +298,19 @@ class DiPlayActivity : ComponentActivity() {
 
     private fun render() {
         reportIssueDescription = reportIssueInput?.text?.toString() ?: reportIssueDescription
+        reportIssueInput = null
+        reportUploadButton = null
+        // A pending assignment belongs to the widgets being replaced, never to another page.
+        WheelKeyService.cancelLearning()
         // A restore still waiting for layout keeps its target: the old page was never laid out.
         val previousScrollY = (pendingScrollY ?: rootScroll?.scrollY)?.takeIf { renderedPage == page }
         status = null; connectButton = null; disconnectButton = null; lastRunning = null
-        reportUploadButton = null; reportIssueInput = null
         bydAdbControls = null
         adbSwitches.clear()
         adbStatus = null
         val compact = isCompactLayout
-        val scroll = ScrollView(this).apply {
-            setBackgroundColor(BG)
-            isFillViewport = true
-            clipToPadding = false
-        }
+        val scroll = ScrollView(this).apply { setBackgroundColor(BG); isFillViewport = true; clipToPadding = false }
         rootScroll = scroll
-        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
-            val safeInsets = insets.getInsets(
-                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
-            )
-            view.setPadding(safeInsets.left, safeInsets.top, safeInsets.right, safeInsets.bottom)
-            insets
-        }
         val content = column().apply {
             if (compact) setPadding(dp(12), dp(10), dp(12), dp(12))
             else setPadding(dp(32), dp(24), dp(32), dp(32))
@@ -350,7 +348,6 @@ class DiPlayActivity : ComponentActivity() {
             else -> home(content)
         }
         setContentView(scroll)
-        ViewCompat.requestApplyInsets(scroll)
         renderedPage = page
         refreshStatus()
         pendingScrollY = previousScrollY
@@ -418,6 +415,8 @@ class DiPlayActivity : ComponentActivity() {
         }
         card.addView(connectButton, matchButton())
         val connectionHint = when (AirPlayPersistence.loadWirelessHotspotMode(this)) {
+            WirelessHotspotMode.AUTOMATIC -> getString(R.string.hotspot_hint_auto)
+            WirelessHotspotMode.EXISTING_WIFI -> getString(R.string.existing_wifi_hint)
             WirelessHotspotMode.MANUAL -> getString(R.string.hotspot_hint_manual)
             WirelessHotspotMode.LOCAL_ONLY_HOTSPOT -> getString(R.string.hotspot_hint_local)
             else -> getString(R.string.hotspot_hint_p2p)
@@ -587,9 +586,13 @@ class DiPlayActivity : ComponentActivity() {
                     .putExtra("picture_controls", true).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
             }, matchButton(0, 56).apply { bottomMargin = dp(24) })
             carPlaySizeControl(card)
-            resolutionSettingControl(card, R.string.resolution, R.string.custom_resolution_hint,
-                30..100, 100, R.string.custom_resolution_summary, { AirPlayPersistence.loadDisplayScalePercent(this) }, reconnects = true,
-                save = { AirPlayPersistence.saveDisplayScalePercent(this, it) })
+            resolutionSettingControl(
+                card, R.string.resolution, R.string.custom_resolution_hint,
+                CarPlayDisplayScale.MIN_PERCENT..CarPlayDisplayScale.MAX_PERCENT, 100,
+                R.string.custom_resolution_summary,
+                { AirPlayPersistence.loadDisplayScalePercent(this) }, reconnects = true,
+                save = { AirPlayPersistence.saveDisplayScalePercent(this, it) },
+            )
             val bufferPresets = com.shilapi.xcertplay.media.MediaAudioBuffer.presets
             choice(card, getString(R.string.music_buffer), listOf(getString(R.string.s_300_ms_default), getString(R.string.s_500_ms), getString(R.string.s_1000_ms_most_stable)),
                 bufferPresets.indexOf(AirPlayPersistence.loadMediaBufferMillis(this)).coerceAtLeast(0)) {
@@ -646,6 +649,7 @@ class DiPlayActivity : ComponentActivity() {
             }
             mediaChannelControl(card)
             navigationChannelControl(card)
+            navigationOutputControl(card)
         }
         section(content, getString(R.string.location), R.drawable.ic_dp_navigation) { card ->
             toggle(card, getString(R.string.report_location_to_iphone),
@@ -681,7 +685,8 @@ class DiPlayActivity : ComponentActivity() {
                 val savedDisplayId = AirPlayPersistence.loadGeelyHudDisplayId(this)
                 val savedDisplayName = AirPlayPersistence.loadGeelyHudDisplayName(this)
                 val selectedDisplayIndex = hudDisplays.indexOfFirst {
-                    it.id == savedDisplayId || it.name == savedDisplayName
+                    (it.id == savedDisplayId && (savedDisplayName == null || it.name == savedDisplayName)) ||
+                        it.name == savedDisplayName
                 }
                 val displayOptions = listOf(getString(R.string.geely_hud_projection_auto)) +
                     hudDisplays.map {
@@ -690,7 +695,6 @@ class DiPlayActivity : ComponentActivity() {
                             it.name,
                             it.width,
                             it.height,
-                            it.id,
                         )
                     }
                 choice(
@@ -701,6 +705,15 @@ class DiPlayActivity : ComponentActivity() {
                     reconnects = false,
                 ) { index -> GeelyHudProjection.selectDisplay(this, hudDisplays.getOrNull(index - 1)) }
             }
+            val hudScales = AirPlayPersistence.geelyHudScalePercents
+            val hudScale = AirPlayPersistence.loadGeelyHudScalePercent(this)
+            choice(
+                card,
+                getString(R.string.geely_hud_content_size),
+                hudScales.map { getString(R.string.geely_hud_content_size_option, it) },
+                hudScales.indexOf(hudScale).coerceAtLeast(0),
+                reconnects = false,
+            ) { index -> GeelyHudProjection.setScale(this, hudScales[index]) }
             toggle(
                 card,
                 getString(R.string.geely_steering_wheel),
@@ -822,9 +835,27 @@ class DiPlayActivity : ComponentActivity() {
                             getString(R.string.dashboard_content_map_with_custom_turn_card),
                         ), contents.indexOf(content).coerceAtLeast(0), reconnects = false) {
                             val next = contents[it]
+                            val request = ++clusterContentRequestVersion
                             AirPlayPersistence.saveClusterContent(this, next)
                             render()
-                            if (content.url != next.url) reconnectForClusterMap()
+                            if (content.url != next.url) {
+                                // The iPhone's own contents switch live. DiPlay's card over the map, and the
+                                // DiLink 5.1 layout (always the map), are set up at connection, so they reconnect.
+                                val controller = CarPlayBackgroundSession.snapshot()?.controller
+                                if (customCard || CarPlayClusterDisplay.usesCustomTurnCard(next) ||
+                                    DiLink51ClusterLayout.supported() || controller == null) {
+                                    reconnectForClusterMap()
+                                } else controller.showDashboardContent(next.url) { applied ->
+                                    runOnUiThread {
+                                        if (!applied && request == clusterContentRequestVersion &&
+                                            !isFinishing && !isDestroyed &&
+                                            AirPlayPersistence.loadClusterContent(this) == next &&
+                                            CarPlayBackgroundSession.snapshot()?.controller === controller) {
+                                            reconnectForClusterMap()
+                                        }
+                                    }
+                                }
+                            }
                         }
                         if (customCard) {
                             card.addView(overlaySliderRow(
@@ -892,6 +923,7 @@ class DiPlayActivity : ComponentActivity() {
                                 if (it) checkAdbState(mayAsk = true)
                             }
                         }
+                        wheelKeyControls(card)
                     }
                 }
             }
@@ -921,7 +953,7 @@ class DiPlayActivity : ComponentActivity() {
     private fun about(content: LinearLayout) {
         content.addView(label(getString(R.string.diplay), 40, TEXT, true))
         content.addView(label(getString(R.string.carplay_at_home_in_your_car), 20, MUTED).apply { setPadding(0, dp(8), 0, dp(24)) })
-        section(content, "${getString(R.string.about_public_preview_prefix)}${version()}") { card ->
+        section(content, getString(R.string.about_diplay)) { card ->
             card.addView(label(getString(R.string.an_independent_carplay_receiver_for_android_head_units_wir), 17, TEXT))
             card.addView(button(getString(R.string.steering_version, version()), false) {
                 developerVersionTaps++
@@ -1154,11 +1186,23 @@ class DiPlayActivity : ComponentActivity() {
 
     private fun wirelessLinkControls(parent: LinearLayout) {
         val mode = if (pendingCarHotspotSetup) WirelessHotspotMode.MANUAL else AirPlayPersistence.loadWirelessHotspotMode(this)
-        val modes = listOf(WirelessHotspotMode.MANUAL, WirelessHotspotMode.WIFI_P2P)
-        val titles = listOf(getString(R.string.built_in_car_hotspot), getString(R.string.wifi_direct))
+        val modes = listOf(
+            WirelessHotspotMode.AUTOMATIC,
+            WirelessHotspotMode.MANUAL,
+            WirelessHotspotMode.WIFI_P2P,
+            WirelessHotspotMode.EXISTING_WIFI,
+        )
+        val titles = listOf(
+            getString(R.string.automatic_connection),
+            getString(R.string.built_in_car_hotspot),
+            getString(R.string.wifi_direct),
+            getString(R.string.existing_wifi_title),
+        )
         val descriptions = listOf(
+            getString(R.string.hotspot_mode_auto_desc),
             getString(R.string.hotspot_mode_manual_desc),
-            getString(R.string.hotspot_mode_p2p_desc)
+            getString(R.string.hotspot_mode_p2p_desc),
+            getString(R.string.existing_wifi_description),
         )
         val wide = resources.configuration.screenWidthDp >= 850
         val choices = if (wide) row().apply { gravity = Gravity.TOP } else column()
@@ -1172,6 +1216,12 @@ class DiPlayActivity : ComponentActivity() {
                 if (candidate == WirelessHotspotMode.MANUAL) {
                     pendingCarHotspotSetup = true
                     render()
+                } else if (candidate == WirelessHotspotMode.EXISTING_WIFI) {
+                    askHotspotCredentials(existingWifi = true) { ssid, password ->
+                        AirPlayPersistence.saveExistingWifiCredentials(this, ssid, password)
+                        pendingCarHotspotSetup = false
+                        applyWirelessLink(candidate)
+                    }
                 } else {
                     pendingCarHotspotSetup = false
                     applyWirelessLink(candidate)
@@ -1191,7 +1241,16 @@ class DiPlayActivity : ComponentActivity() {
                 }
             }, matchButton(12, 60))
             parent.addView(label(if (pendingCarHotspotSetup) getString(R.string.finish_setup_save_your_hotspot_details_to_use_this_mode) else if (carHotspotOff()) getString(R.string.hotspot_details_off) else getString(R.string.hotspot_details_saved), 15, if (carHotspotOff()) WARNING else MUTED).apply { setPadding(0, dp(12), 0, 0) })
-        } else {
+        } else if (mode == WirelessHotspotMode.EXISTING_WIFI) {
+            parent.addView(label(getString(R.string.existing_wifi_instructions), 16, MUTED))
+            parent.addView(button(getString(R.string.open_car_wi_fi_settings), false) { openCarClientWifiSettings() }, matchButton(12, 60))
+            parent.addView(button(getString(R.string.existing_wifi_details), false) {
+                askHotspotCredentials(existingWifi = true) { ssid, password ->
+                    AirPlayPersistence.saveExistingWifiCredentials(this, ssid, password)
+                    toast(getString(R.string.saved_for_your_next_connection))
+                }
+            }, matchButton(12, 60))
+        } else if (mode == WirelessHotspotMode.WIFI_P2P) {
             parent.addView(label(getString(R.string.turn_the_car_s_wi_fi_switch_on_allow_location_nearby_devic), 16, MUTED))
             wifiDirectChannelControl(parent)
             parent.addView(button(getString(R.string.open_car_wi_fi_settings), false) { openCarClientWifiSettings() }, matchButton(12, 60))
@@ -1271,7 +1330,7 @@ class DiPlayActivity : ComponentActivity() {
     }
 
     private fun showChannelDialog(title: String, current: Int, navigation: Boolean, onApply: (Int) -> Unit) {
-        val preview = AudioChannelPreview { channel ->
+        val preview = AudioChannelPreview(this) { channel ->
             toast(getString(R.string.contrib_audio_home_channel_preview_unavailable, channel))
         }
         val channels = AirPlayPersistence.AUDIO_CHANNELS
@@ -1298,10 +1357,95 @@ class DiPlayActivity : ComponentActivity() {
     }
 
     private fun applyNavigationChannel(value: Int, previous: Int, control: Button, summary: (Int) -> String) {
-        if (value == previous) return
+        if (value == previous && AirPlayPersistence.loadNavigationOutputDevice(this) == null) return
         AirPlayPersistence.saveNavigationAudioChannel(this, value)
+        AirPlayPersistence.saveNavigationOutputDevice(this, null)
         control.text = summary(value)
+        render()
         if (CarPlayBackgroundSession.hasSession()) connect(AirPlayPersistence.loadWirelessEnabled(this))
+    }
+
+    private fun navigationOutputControl(parent: LinearLayout) {
+        val manager = getSystemService(android.media.AudioManager::class.java)
+        val saved = AirPlayPersistence.loadNavigationOutputDevice(this)
+        val current = saved?.resolve(manager)
+        fun deviceLabel(device: android.media.AudioDeviceInfo): String {
+            val name = device.productName.toString().trim()
+                .takeIf { it.isNotBlank() && '/' !in it && '\\' !in it }
+                ?: getString(R.string.navigation_output_speaker)
+            return getString(R.string.navigation_output_device_label, name, device.id)
+        }
+        val value = when {
+            current != null -> deviceLabel(current)
+            saved != null -> getString(R.string.navigation_output_unavailable)
+            else -> getString(R.string.navigation_output_auto)
+        }
+        val control = button(getString(R.string.navigation_output_summary, value), false) {}
+        control.setOnClickListener {
+            val devices = AudioOutputDevice.outputs(manager)
+            val previous = AirPlayPersistence.loadNavigationOutputDevice(this)
+            val resolved = previous?.resolve(manager)
+            val preview = AudioChannelPreview(this) { toast(getString(R.string.navigation_output_unavailable)) }
+            val fields = column().apply { setPadding(dp(24), dp(12), dp(24), dp(12)) }
+            val number = EditText(this).apply {
+                hint = getString(R.string.navigation_output_number)
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                setSingleLine()
+                setText((resolved?.id ?: previous?.id)?.toString().orEmpty())
+            }
+            fields.addView(number)
+            fields.addView(label(getString(R.string.navigation_output_test_note), 14, MUTED))
+            fun selection(): AudioOutputDevice? {
+                val text = number.text.toString().trim()
+                if (text.isEmpty()) return null
+                val id = text.toIntOrNull()
+                val device = AudioOutputDevice.outputs(manager).firstOrNull { it.id == id }
+                if (device == null) {
+                    number.error = getString(R.string.navigation_output_unavailable)
+                    throw IllegalArgumentException("Output device unavailable")
+                }
+                return AudioOutputDevice.from(device)
+            }
+            fields.addView(button(getString(R.string.navigation_output_preview), false) {
+                runCatching { selection() }.onSuccess { output ->
+                    preview.play(if (output == null) AirPlayPersistence.loadNavigationAudioChannel(this) else 0, true, output)
+                }
+            }, matchButton(8, 52))
+            val labels = arrayOf(getString(R.string.navigation_output_auto), *devices.map(::deviceLabel).toTypedArray())
+            val selected = if (previous == null) 0 else devices.indexOfFirst { it.id == resolved?.id }
+                .let { if (it < 0) -1 else it + 1 }
+            val dialog = AlertDialog.Builder(this).setTitle(R.string.navigation_output_title)
+                .setSingleChoiceItems(labels, selected) { _, which ->
+                    number.error = null
+                    number.setText(if (which == 0) "" else devices[which - 1].id.toString())
+                }
+                .setView(fields)
+                .setPositiveButton(if (CarPlayBackgroundSession.hasSession()) R.string.apply_and_reconnect else R.string.save, null)
+                .setNegativeButton(R.string.cancel, null)
+                .setOnDismissListener { preview.close() }.create()
+            dialog.setOnShowListener {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    runCatching { selection() }.onSuccess { output ->
+                        AirPlayPersistence.saveNavigationOutputDevice(this, output)
+                        if (output != null) AirPlayPersistence.saveNavigationAudioChannel(this, 0)
+                        dialog.dismiss()
+                        render()
+                        if (CarPlayBackgroundSession.hasSession()) connect(AirPlayPersistence.loadWirelessEnabled(this))
+                    }
+                }
+            }
+            dialog.show()
+            number.doAfterTextChanged { text ->
+                number.error = null
+                val value = text.toString().trim()
+                val index = if (value.isEmpty()) 0 else devices.indexOfFirst { it.id == value.toIntOrNull() }
+                    .let { if (it < 0) -1 else it + 1 }
+                dialog.listView.clearChoices()
+                if (index >= 0) dialog.listView.setItemChecked(index, true)
+                dialog.listView.invalidateViews()
+            }
+        }
+        parent.addView(control, matchButton(0, 60))
     }
 
     private fun channelLabel(value: Int): String = value.toString()
@@ -1320,12 +1464,18 @@ class DiPlayActivity : ComponentActivity() {
         AirPlayPersistence.saveManualHotspotChannel(this, 0)
     }
 
-    private fun askHotspotCredentials(done: (String, String) -> Unit) {
+    private fun askHotspotCredentials(existingWifi: Boolean = false, done: (String, String) -> Unit) {
         val fields = column().apply { setPadding(dp(24), dp(12), dp(24), dp(12)) }
-        fields.addView(label(getString(R.string.copy_these_from_the_car_s_hotspot_settings_use_5_ghz_if_av), 16, MUTED))
-        val ssid = EditText(this).apply { hint = getString(R.string.hotspot_name); setText(storedSsid()); setSingleLine() }
+        fields.addView(label(getString(if (existingWifi) R.string.existing_wifi_instructions else R.string.copy_these_from_the_car_s_hotspot_settings_use_5_ghz_if_av), 16, MUTED))
+        val ssid = EditText(this).apply {
+            hint = getString(if (existingWifi) R.string.existing_wifi_ssid else R.string.hotspot_name)
+            setText(if (existingWifi) AirPlayPersistence.loadExistingWifiSsid(this@DiPlayActivity) else storedSsid())
+            setSingleLine()
+        }
         val password = EditText(this).apply {
-            hint = getString(R.string.hotspot_password); setText(storedPassword()); setSingleLine()
+            hint = getString(if (existingWifi) R.string.existing_wifi_password else R.string.hotspot_password)
+            setText(if (existingWifi) AirPlayPersistence.loadExistingWifiPassphrase(this@DiPlayActivity) else storedPassword())
+            setSingleLine()
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
         ssid.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_NEXT or android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI
@@ -1353,7 +1503,7 @@ class DiPlayActivity : ComponentActivity() {
         val error = label("", 14, WARNING)
         error.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         fields.addView(error)
-        val dialog = AlertDialog.Builder(this).setTitle(getString(R.string.car_hotspot_details))
+        val dialog = AlertDialog.Builder(this).setTitle(getString(if (existingWifi) R.string.existing_wifi_details else R.string.car_hotspot_details))
             .setView(ScrollView(this).apply { addView(fields) })
             .setPositiveButton(getString(R.string.save_details), null).setNegativeButton(getString(R.string.cancel)) { _, _ -> hideKeyboard() }
             .setNeutralButton(getString(R.string.hide_keyboard), null).create()
@@ -1361,7 +1511,7 @@ class DiPlayActivity : ComponentActivity() {
             dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
             dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener { hideKeyboard() }
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val name = ssid.text.toString().trim()
+                val name = if (existingWifi) ssid.text.toString() else ssid.text.toString().trim()
                 val secret = password.text.toString()
                 val problem = hotspotError(name, secret)
                 if (problem != null) error.text = problem
@@ -1467,6 +1617,88 @@ class DiPlayActivity : ComponentActivity() {
         dialog.show()
     }
 
+    /** Steering-wheel keys for the dashboard map zoom and the CarPlay joystick: the switches, the key service and the keys. */
+    private fun wheelKeyControls(card: LinearLayout) {
+        toggle(card, getString(R.string.wheel_map_zoom), getString(R.string.wheel_map_zoom_description),
+            WheelZoomSettings.enabled(this)) {
+            WheelZoomSettings.setEnabled(this, it)
+            render()
+        }
+        toggle(card, getString(R.string.wheel_joystick), getString(R.string.wheel_joystick_description),
+            WheelZoomSettings.joystick(this)) {
+            WheelZoomSettings.setJoystick(this, it)
+            render()
+        }
+        val zoom = WheelZoomSettings.enabled(this)
+        val joystick = WheelZoomSettings.joystick(this)
+        if (!zoom && !joystick) return
+        val connected = WheelKeyService.connected()
+        card.addView(label(getString(when {
+            connected -> R.string.wheel_keys_service_on
+            WheelKeyService.enabledInSettings(this) -> R.string.wheel_keys_service_starting
+            else -> R.string.wheel_keys_service_off
+        }), 14, if (connected) MUTED else WARNING))
+        if (!connected) {
+            card.addView(button(getString(R.string.wheel_keys_enable_adb), false) {
+                Thread({
+                    val access = WheelKeyService.enableOverAdb(this)
+                    runOnUiThread {
+                        if (access != com.shilapi.xcertplay.adb.LocalAdb.Access.READY) {
+                            toast(getString(R.string.wheel_keys_adb_failed, access.name))
+                        }
+                        render()
+                    }
+                }, "diplay-wheel-keys-enable").start()
+            }, matchButton(10, 56))
+            card.addView(button(getString(R.string.wheel_keys_open_settings), false) {
+                runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                    .onFailure { toast(getString(R.string.wheel_keys_no_settings)) }
+            }, matchButton(10, 56))
+        }
+        if (zoom) {
+            val behaviours = WheelZoomSettings.Behaviour.entries
+            choice(card, getString(R.string.wheel_zoom_behaviour),
+                listOf(getString(R.string.wheel_zoom_behaviour_toggle), getString(R.string.wheel_zoom_behaviour_timed)),
+                behaviours.indexOf(WheelZoomSettings.behaviour(this)), reconnects = false) {
+                WheelZoomSettings.setBehaviour(this, behaviours[it])
+            }
+        }
+        if (joystick) {
+            toggle(card, getString(R.string.wheel_joystick_auto_off), getString(R.string.wheel_joystick_auto_off_description),
+                WheelZoomSettings.joystickAutoOff(this)) { WheelZoomSettings.setJoystickAutoOff(this, it) }
+        }
+        for (role in WheelZoomSettings.Role.entries) {
+            // A key can serve both: the mode key goes back in the joystick, the zoom keys move it.
+            val zoomName = when (role) {
+                WheelZoomSettings.Role.MODE -> R.string.wheel_key_role_mode
+                WheelZoomSettings.Role.ZOOM_IN -> R.string.wheel_key_role_zoom_in
+                WheelZoomSettings.Role.ZOOM_OUT -> R.string.wheel_key_role_zoom_out
+                else -> null
+            }.takeIf { zoom }
+            val joystickName = when (role) {
+                WheelZoomSettings.Role.MODE -> R.string.wheel_key_role_back
+                WheelZoomSettings.Role.ZOOM_IN, WheelZoomSettings.Role.PREVIOUS -> R.string.wheel_key_role_previous
+                WheelZoomSettings.Role.ZOOM_OUT, WheelZoomSettings.Role.NEXT -> R.string.wheel_key_role_next
+                WheelZoomSettings.Role.JOYSTICK -> R.string.wheel_key_role_joystick
+                WheelZoomSettings.Role.SELECT -> R.string.wheel_key_role_select
+            }.takeIf { joystick }
+            val names = listOfNotNull(zoomName, joystickName)
+            if (names.isEmpty()) continue
+            val name = names.joinToString(" · ") { getString(it) }
+            lateinit var assign: android.widget.Button
+            assign = button(getString(R.string.wheel_key_assign, name, WheelZoomSettings.key(this, role).toString()), false) {
+                val started = WheelKeyService.learn(role, cancelled = {
+                    runOnUiThread { assign.text = getString(R.string.wheel_key_assign, name, WheelZoomSettings.key(this, role).toString()) }
+                }) { _, key ->
+                    runOnUiThread { assign.text = getString(R.string.wheel_key_assign, name, key.toString()) }
+                }
+                if (started) assign.text = getString(R.string.wheel_key_press, name)
+                else toast(getString(R.string.wheel_keys_service_off))
+            }
+            card.addView(assign, matchButton(10, 56))
+        }
+    }
+
     /** The 0.2.9 Dashboard song setting, shown once: in the BYD navigation card, or under Advanced vehicle data. */
     private fun clusterSongSwitch(card: LinearLayout) {
         toggle(card, getString(R.string.cluster_song),
@@ -1475,6 +1707,11 @@ class DiPlayActivity : ComponentActivity() {
             BydOutputSettings.setClusterSong(this, it)
             if (it) checkAdbState(mayAsk = true)
             BydNavigationOutputs.clusterSongChanged(it)
+        }
+        toggle(card, getString(R.string.cluster_song_on_change), getString(R.string.cluster_song_on_change_description),
+            BydOutputSettings.clusterSongOnChange(this), enabled = !adbSwitchChangePending) {
+            BydOutputSettings.setClusterSongOnChange(this, it)
+            BydNavigationOutputs.clusterSongOnChangeChanged()
         }
     }
 
@@ -2691,12 +2928,9 @@ class DiPlayActivity : ComponentActivity() {
             )
             for (field in BydVehicleField.entries) {
                 val probe = bydCapabilities.result(field)
-                appendLine(
-                    "${field.name}: supported=${probe.supported} " +
-                        (probe.address?.let {
-                            "tx=${it.transaction} dev=${it.device} fid=${it.fid} source=${it.source}"
-                        } ?: "address=none"),
-                )
+                appendLine("${field.name}: supported=${probe.supported} " +
+                    (probe.address?.let { "tx=${it.transaction} dev=${it.device} fid=${it.fid} source=${it.source}" }
+                        ?: "address=none"))
             }
         }
         appendLine()
@@ -2721,9 +2955,7 @@ class DiPlayActivity : ComponentActivity() {
             val file = File(appContext.filesDir, "logs/$name")
             if (file.isFile) {
                 appendLine("--- $name ---")
-                file.useLines { lines ->
-                    lines.forEach { line -> DiagnosticRedactor.redact(line)?.let { appendLine(it) } }
-                }
+                file.useLines { lines -> lines.forEach { line -> DiagnosticRedactor.redact(line)?.let { appendLine(it) } } }
             }
         }
     }
@@ -2791,10 +3023,15 @@ class DiPlayActivity : ComponentActivity() {
                     AlertDialog.Builder(this).setTitle(getString(R.string.diagnostic_report_saved))
                         .setMessage(when {
                             savedReport.savedInApp -> getString(R.string.diagnostic_report_saved_in_app)
+                            savedReport.savedPath != null -> getString(R.string.diagnostic_report_saved_to_path, savedReport.savedPath)
                             uri == null -> "Downloads/DiPlay/$fileName"
                             else -> getString(R.string.your_report_was_saved_to_the_selected_location)
                         })
-                        .setPositiveButton(getString(R.string.view_diagnostic_report)) { _, _ -> showDiagnosticReport(report) }
+                        .apply {
+                            if (SteeringProfiles.developerUnlocked(this@DiPlayActivity)) {
+                                setPositiveButton(getString(R.string.view_diagnostic_report)) { _, _ -> showDiagnosticReport(report) }
+                            }
+                        }
                         .setNegativeButton(getString(R.string.done), null)
                         .setNeutralButton(getString(R.string.share)) { _, _ ->
                             runCatching {
@@ -2803,7 +3040,7 @@ class DiPlayActivity : ComponentActivity() {
                                     clipData = android.content.ClipData.newRawUri(getString(R.string.report_clip_label), savedReport.uri)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }, getString(R.string.share_diagnostic_report)))
-                            }.onFailure { showDiagnosticReport(report) }
+                            }.onFailure { toast(getString(R.string.report_share_failed)) }
                         }.show()
                 } else {
                     AlertDialog.Builder(this).setTitle(getString(R.string.could_not_save_the_report))
@@ -2816,6 +3053,7 @@ class DiPlayActivity : ComponentActivity() {
     }
 
     private fun showDiagnosticReport(report: String) {
+        if (!SteeringProfiles.developerUnlocked(this)) return
         val body = column().apply { setPadding(dp(24), dp(12), dp(24), dp(12)) }
         body.addView(label(getString(R.string.diagnostic_report_copy_hint), 14, MUTED))
         body.addView(label(report, 13, TEXT).apply {
@@ -2831,11 +3069,11 @@ class DiPlayActivity : ComponentActivity() {
             openSystem(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
         }.setNegativeButton(getString(R.string.later), null).show()
     }
-    private fun openSystem(intent: Intent) { runCatching { startActivity(intent) }.onFailure { toast(getString(R.string.open_this_setting_from_your_car_s_settings_app)) } }
     private fun openProjectLink(url: String) {
         runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
             .onFailure { toast(getString(R.string.ui_project_link_failed)) }
     }
+    private fun openSystem(intent: Intent) { runCatching { startActivity(intent) }.onFailure { toast(getString(R.string.open_this_setting_from_your_car_s_settings_app)) } }
     private fun toast(message: String) { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
 
     private fun playTestTone(streamType: Int) {

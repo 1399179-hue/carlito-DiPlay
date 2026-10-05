@@ -20,6 +20,7 @@ import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 import com.shilapi.xcertplay.network.WifiP2pChannels
 import com.shilapi.xcertplay.transport.LockdownPairRecord
 import com.shilapi.xcertplay.vehicle.GeelyFactoryCarPlay
+import com.shilapi.xcertplay.media.AudioOutputDevice
 import java.io.File
 
 /** SharedPreferences persistence for the accessory identity and paired controllers. */
@@ -70,6 +71,7 @@ object AirPlayPersistence {
     private const val KEY_GEELY_HUD_ENABLED = "geely_hud_enabled"
     private const val KEY_GEELY_HUD_DISPLAY_ID = "geely_hud_display_id"
     private const val KEY_GEELY_HUD_DISPLAY_NAME = "geely_hud_display_name"
+    private const val KEY_GEELY_HUD_SCALE_PERCENT = "geely_hud_scale_percent"
     private const val KEY_GEELY_STEERING_ENABLED = "geely_steering_enabled"
     private const val KEY_ADB_CLUSTER_ACTIVITY = "adb_cluster_activity_enabled"
     private const val KEY_CENTER_MAP_OVERLAY = "center_map_overlay"
@@ -119,11 +121,15 @@ object AirPlayPersistence {
 
     fun loadDisplayScalePercent(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt("display_scale_percent", loadDisplayScaleTenths(context) * 10).coerceIn(30, 100)
+            .getInt("display_scale_percent", loadDisplayScaleTenths(context) * 10)
+            .coerceIn(CarPlayDisplayScale.MIN_PERCENT, CarPlayDisplayScale.MAX_PERCENT)
 
     fun saveDisplayScalePercent(context: Context, percent: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putInt("display_scale_percent", percent.coerceIn(30, 100)).apply()
+            .putInt(
+                "display_scale_percent",
+                percent.coerceIn(CarPlayDisplayScale.MIN_PERCENT, CarPlayDisplayScale.MAX_PERCENT),
+            ).apply()
     }
     /** Applied by the CarPlay host so overlay position/size updates without reconnecting. */
     @Volatile var overlaySettingsListener: (() -> Unit)? = null
@@ -217,16 +223,11 @@ object AirPlayPersistence {
 
     fun loadNavigationAudioChannel(context: Context): Int {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val factoryDefault = if (GeelyFactoryCarPlay.load(context) != null) {
-            loadNavigationStreamType(context)
-        } else {
-            0
-        }
-        // Inherit the legacy value only when the new key is absent. Factory Geely units default
-        // to their navigation stream; an explicitly saved 0 still keeps automatic usage routing.
+        // The factory receiver routes navigation by usage, not a universal stream number.
+        // Inherit an explicitly saved legacy choice only when the new key is absent.
         return prefs.getInt(
             KEY_NAVIGATION_AUDIO_CHANNEL,
-            prefs.getInt(KEY_NAVIGATION_STREAM_TYPE, factoryDefault),
+            prefs.getInt(KEY_NAVIGATION_STREAM_TYPE, 0),
         )
             .takeIf { it in AUDIO_CHANNELS } ?: 0
     }
@@ -235,6 +236,15 @@ object AirPlayPersistence {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putInt(KEY_NAVIGATION_AUDIO_CHANNEL, channel.takeIf { it in AUDIO_CHANNELS } ?: 0)
             .apply()
+    }
+
+    fun loadNavigationOutputDevice(context: Context): AudioOutputDevice? = AudioOutputDevice.decode(
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("navigation_output_device", null),
+    )
+
+    fun saveNavigationOutputDevice(context: Context, device: AudioOutputDevice?) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("navigation_output_device", device?.encode()).apply()
     }
 
     fun loadWirelessEnabled(context: Context): Boolean =
@@ -297,16 +307,16 @@ object AirPlayPersistence {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val stored = prefs.getString(KEY_WIRELESS_HOTSPOT_MODE, null)
         val mode = WirelessHotspotMode.entries.firstOrNull { it.name == stored }
-            ?: WirelessHotspotMode.MANUAL
+            ?: WirelessHotspotMode.AUTOMATIC
         val supported = if (mode == WirelessHotspotMode.LOCAL_ONLY_HOTSPOT ||
             (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && mode == WirelessHotspotMode.WIFI_P2P)
-        ) WirelessHotspotMode.MANUAL else mode
+        ) WirelessHotspotMode.AUTOMATIC else mode
         if (stored != supported.name) saveWirelessHotspotMode(context, supported)
         return supported
     }
 
     fun saveWirelessHotspotMode(context: Context, mode: WirelessHotspotMode) {
-        val supported = if (mode == WirelessHotspotMode.LOCAL_ONLY_HOTSPOT) WirelessHotspotMode.MANUAL else mode
+        val supported = if (mode == WirelessHotspotMode.LOCAL_ONLY_HOTSPOT) WirelessHotspotMode.AUTOMATIC else mode
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY_WIRELESS_HOTSPOT_MODE, supported.name)
             .apply()
@@ -322,6 +332,20 @@ object AirPlayPersistence {
         require(WifiP2pChannels.isValid(channel))
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putInt(KEY_WIFI_P2P_PREFERRED_CHANNEL, channel).apply()
+    }
+
+    fun loadExistingWifiSsid(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString("existing_wifi_ssid", "").orEmpty()
+
+    fun loadExistingWifiPassphrase(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString("existing_wifi_passphrase", "").orEmpty()
+
+    fun saveExistingWifiCredentials(context: Context, ssid: String, passphrase: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("existing_wifi_ssid", ssid)
+            .putString("existing_wifi_passphrase", passphrase).apply()
     }
 
     fun loadManualHotspotSsid(context: Context): String =
@@ -586,6 +610,20 @@ object AirPlayPersistence {
             }
             .apply()
     }
+
+    fun loadGeelyHudScalePercent(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_GEELY_HUD_SCALE_PERCENT, 85)
+            .takeIf { it in geelyHudScalePercents } ?: 85
+
+    fun saveGeelyHudScalePercent(context: Context, percent: Int) {
+        require(percent in geelyHudScalePercents)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_GEELY_HUD_SCALE_PERCENT, percent)
+            .apply()
+    }
+
+    val geelyHudScalePercents = listOf(70, 85, 100)
 
     fun loadGeelySteeringEnabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
