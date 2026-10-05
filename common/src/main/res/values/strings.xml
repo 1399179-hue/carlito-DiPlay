@@ -604,13 +604,13 @@
     <string name="steering_identify">Identify</string>
     <string name="steering_press_button">Press the steering button for %1$s.</string>
     <string name="steering_press_again">Button detected. Press the same button again for %1$s.</string>
-    <string name="steering_no_key">No complete button information received. Check that this head unit allows button access and try again.</string>
+    <string name="steering_no_key">No complete button information received. Allow button access first; if identification still fails, send a report through Collect logs.</string>
     <string name="steering_event_incomplete">Button detected. Press and release it once more.</string>
     <string name="steering_allow_access">Allow button access</string>
     <string name="steering_access_needed">Allow button access before identification.</string>
-    <string name="steering_access_connecting">Connecting to the head unit. Allow DiPlay to connect if an approval prompt appears.</string>
+    <string name="steering_access_connecting">Enabling button access. Allow DiPlay to connect if an approval prompt appears.</string>
     <string name="steering_access_approval">Allow DiPlay in the head unit’s approval prompt and try again.</string>
-    <string name="steering_access_unavailable">Cannot connect to this head unit. Check that it allows app connections and try again.</string>
+    <string name="steering_access_unavailable">Automatic button access is unavailable. Try identification; if there is still no response, send a report through Collect logs.</string>
     <string name="steering_access_denied">Button access was not granted. Check approval and try again.</string>
     <string name="steering_reassigned">This button has moved from %1$s to %2$s. Save to apply it.</string>
     <string name="steering_restore_defaults">Restore original controls</string>

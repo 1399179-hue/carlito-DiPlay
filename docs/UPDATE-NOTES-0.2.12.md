@@ -17,6 +17,7 @@
 - 优化画面播放兼容性与延迟控制，并根据车机能力选择合适的播放方式。
 - 新增导航输出设备选择、设备编号输入和试听，方便确认所需扬声器。
 - 改进 USB 通话结束后的音乐播放恢复。
+- 改善方向盘按键读取状态与授权失败提示，识别无响应时可收集日志反馈。
 
 ## 吉利车机适配
 
@@ -47,6 +48,7 @@
 - Improve video playback compatibility and latency control, adapting playback to the head unit’s capabilities.
 - Add navigation output selection, a device-number field and a test sound to help identify the desired speaker.
 - Improve music playback recovery after USB phone calls.
+- Improve steering-button access status and authorization messages, with a log-report option when identification receives no response.
 
 ## Geely adaptation
 

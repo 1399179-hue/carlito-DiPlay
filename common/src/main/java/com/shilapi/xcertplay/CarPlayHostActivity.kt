@@ -3323,7 +3323,7 @@ class CarPlayHostActivity : ComponentActivity() {
         var scaledDisplay = CarPlayUiScale.apply(resolutionDisplay, uiScalePercent)
         val candidate = scaledDisplay
         val candidatePlayback = compatibleVideoDisplay(scaledDisplay)
-        scaledDisplay = candidatePlayback.first
+        // Gate an enlarged canvas at the selected frame rate; adjust playback only after sizing.
         var effectiveHevc = candidatePlayback.second
         var support = when {
             uiScalePercent < CarPlayUiScale.DEFAULT && candidate === resolutionDisplay ->

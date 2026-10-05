@@ -56,6 +56,8 @@ internal object CarPlayMediaKeys {
     private var appContext: Context? = null
     private var geelyInput: GeelySteeringWheelInputChannel? = null
     private var keyLogMonitor: SteeringKeyLogMonitor? = null
+    private var lastGeelyInputDiagnostics = "oneOs INACTIVE"
+    private var lastKeyLogDiagnostics = "logMonitor INACTIVE"
     @Volatile private var monitorGeneration = 0
     private var steeringProfile: SteeringProfile? = null
     private data class Learning(val owner: Any, val onKey: (SteeringObservedKey?) -> Unit)
@@ -174,14 +176,14 @@ internal object CarPlayMediaKeys {
             (profileUsesOneOs || steeringProfile == null &&
                 appContext?.let(AirPlayPersistence::loadGeelySteeringEnabled) == true)
         if (!useGeelyInput) {
-            geelyInput?.close()
+            geelyInput?.let { lastGeelyInputDiagnostics = it.diagnostics(); it.close() }
             geelyInput = null
         } else if (geelyInput == null) {
             geelyInput = GeelySteeringWheelInputChannel(appContext!!, ::onGeelySteeringKey).also {
                 it.setEnabled(true)
             }
         }
-        keyLogMonitor?.close(); keyLogMonitor = null
+        keyLogMonitor?.let { lastKeyLogDiagnostics = it.diagnostics(); it.close() }; keyLogMonitor = null
         val generation = ++monitorGeneration
         val inputBindings = steeringProfile?.bindings?.filterNot { it.source == "oneos" } ?: if (!useGeelyInput && appContext?.let(GeelyFactoryCarPlay::load) != null) {
             // HardKeyModel in the factory APK logs this press even without a connected iPhone.
@@ -247,9 +249,12 @@ internal object CarPlayMediaKeys {
 
     fun steeringDiagnostics(): String = synchronized(this) {
         val permitted = appContext?.checkSelfPermission(android.Manifest.permission.READ_LOGS) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        "systemLogAccess=$permitted\n" + (geelyInput?.diagnostics() ?: "oneOs INACTIVE") + "\n" +
-            (keyLogMonitor?.diagnostics() ?: "logMonitor INACTIVE") + "\n" + observedKeys.joinToString("\n")
+        "systemLogAccess=$permitted\n" + SteeringLogAccess.diagnostics() + "\n" +
+            (geelyInput?.diagnostics() ?: "last: $lastGeelyInputDiagnostics") + "\n" +
+            (keyLogMonitor?.diagnostics() ?: "last: $lastKeyLogDiagnostics") + "\n" + observedKeys.joinToString("\n")
     }
+
+    fun steeringDirectReady(): Boolean = synchronized(this) { geelyInput?.ready() == true }
 
     private fun onObservedKey(key: SteeringObservedKey) {
         val learner = synchronized(this) {

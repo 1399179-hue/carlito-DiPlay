@@ -71,6 +71,8 @@ internal class GeelySteeringWheelInputChannel(
     private var bound = false
     private var enabled = false
     private var closed = false
+    private var lastFailure = "NONE"
+    private var serviceMetadata = "NOT_CHECKED"
 
     private val retryInputService = object : Runnable {
         override fun run() {
@@ -190,18 +192,30 @@ internal class GeelySteeringWheelInputChannel(
     }
 
     fun diagnostics(): String = synchronized(lock) {
-        "oneOs enabled=$enabled bound=$bound input=${inputManager != null} registered=${registeredKeys.size}"
+        "oneOs enabled=$enabled bound=$bound input=${inputManager != null} registered=${registeredKeys.size} " +
+            "service=$serviceMetadata failure=$lastFailure"
     }
+
+    fun ready(): Boolean = synchronized(lock) { registeredKeys.isNotEmpty() }
 
     private fun bindLocked() {
         if (closed || !enabled || bound) return
+        serviceMetadata = runCatching {
+            @Suppress("DEPRECATION")
+            val info = app.packageManager.getServiceInfo(ComponentName(ONE_OS_PACKAGE, ONE_OS_SERVICE), 0)
+            "enabled=${info.enabled && info.applicationInfo.enabled},exported=${info.exported},permission=${info.permission ?: "NONE"}"
+        }.getOrElse { it.javaClass.simpleName }
         bound = runCatching {
             app.bindService(
                 Intent().setClassName(ONE_OS_PACKAGE, ONE_OS_SERVICE),
                 connection,
                 Context.BIND_AUTO_CREATE,
             )
-        }.onFailure { Log.w(TAG, "OneOS input service bind failed", it) }.getOrDefault(false)
+        }.onFailure {
+            lastFailure = "bind ${it.javaClass.simpleName}: ${it.message?.take(160)}"
+            Log.w(TAG, "OneOS input service bind failed", it)
+        }.getOrDefault(false)
+        if (!bound && lastFailure == "NONE") lastFailure = "service_not_bound"
         if (!bound) mainHandler.postDelayed(retryConnection, CONNECT_RETRY_MS)
     }
 
@@ -247,7 +261,10 @@ internal class GeelySteeringWheelInputChannel(
             },
             read = { Unit },
         ) != null
-        if (registered) registeredKeys = keyTable
+        if (registered) {
+            registeredKeys = keyTable
+            lastFailure = "NONE"
+        }
     }
 
     private fun releaseRegisteredLocked() {
@@ -279,10 +296,14 @@ internal class GeelySteeringWheelInputChannel(
         return try {
             data.writeInterfaceToken(descriptor)
             data.write()
-            if (!binder.transact(code, data, reply, 0)) return null
+            if (!binder.transact(code, data, reply, 0)) {
+                lastFailure = "transaction=$code unsupported"
+                return null
+            }
             reply.readException()
             reply.read()
         } catch (error: Throwable) {
+            lastFailure = "transaction=$code ${error.javaClass.simpleName}: ${error.message?.take(160)}"
             Log.w(TAG, "OneOS input transaction failed", error)
             null
         } finally {
