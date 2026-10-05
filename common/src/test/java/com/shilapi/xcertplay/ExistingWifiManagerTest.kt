@@ -91,19 +91,31 @@ class ExistingWifiManagerTest {
         manager().use { assertEquals("192.0.2.10", start(it).hostAddress!!.hostAddress) }
     }
 
-    @Test fun preservesScopedLinkLocalPreferenceAndFallsBackToIpv4() {
+    @Test fun advertisesIpv4WhileKeepingScopedLinkLocalAsSecondary() {
         properties.setLinkAddresses(properties.linkAddresses + linkAddress("fe80::1234/64"))
         manager().use {
             val result = start(it)
-            val address = result.hostAddress as Inet6Address
+            // This value becomes 0x4301 wirelessIP, and iOS cannot route an unqualified link-local
+            // address, so the IPv4 lease has to be the advertised one even though fe80:: is present.
+            assertEquals("192.0.2.10", result.hostAddress!!.hostAddress)
             assertEquals(listOf("192.0.2.10", "fe80:0:0:0:0:0:0:1234"),
                 result.hostAddresses.map { host -> host.hostAddress!!.substringBefore('%') })
+            val secondary = result.hostAddresses.last() as Inet6Address
+            assertTrue(secondary.isLinkLocalAddress)
+            assertEquals(iface.index, secondary.scopeId)
+        }
+    }
+
+    @Test fun fallsBackToScopedLinkLocalWhenTheLanHasNoIpv4() {
+        properties.setLinkAddresses(listOf(linkAddress("fe80::1234/64")))
+        manager().use {
+            val address = start(it).hostAddress as Inet6Address
             assertTrue(address.isLinkLocalAddress)
             assertEquals(iface.index, address.scopeId)
         }
     }
 
-    @Test fun lossOfSecondaryIpv4RestartsEvenWhenPrimaryIpv6Remains() {
+    @Test fun lossOfTheAdvertisedIpv4RestartsEvenWhenLinkLocalIpv6Remains() {
         properties.setLinkAddresses(properties.linkAddresses + linkAddress("fe80::1234/64"))
         manager().use {
             start(it)
