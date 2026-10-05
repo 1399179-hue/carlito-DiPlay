@@ -614,21 +614,29 @@ class WifiP2pGroupManager(
 
     private fun interfaceAddress(interfaceName: String): InetAddress? {
         val networkInterface = networkInterface(interfaceName) ?: return null
-        var ipv4: InetAddress? = null
+        var linkLocal: InetAddress? = null
         for (address in Collections.list(networkInterface.inetAddresses)) {
-            if (address is Inet6Address && address.isLinkLocalAddress) {
-                if (address.scopeId == networkInterface.index) return address
-                try {
-                    return Inet6Address.getByAddress(null, address.address, networkInterface)
-                } catch (_: UnknownHostException) {
-                    continue
+            // A Wi-Fi Direct group always has both an IPv4 lease and a scoped link-local IPv6
+            // address. The address advertised to the phone in 0x4301 must be the IPv4 one: iOS
+            // cannot route an unqualified link-local address, so announcing fe80:: leaves the
+            // handset associated but silent (tcpAccepted=0). Measured on a 领克 03: the P2P
+            // group works only when the IPv4 lease is what gets advertised.
+            if (address is Inet4Address && !address.isLoopbackAddress && !address.isLinkLocalAddress) {
+                return address
+            }
+            if (address is Inet6Address && address.isLinkLocalAddress && linkLocal == null) {
+                linkLocal = if (address.scopeId == networkInterface.index) {
+                    address
+                } else {
+                    try {
+                        Inet6Address.getByAddress(null, address.address, networkInterface)
+                    } catch (_: UnknownHostException) {
+                        null
+                    }
                 }
             }
-            if (address is Inet4Address && !address.isLoopbackAddress && ipv4 == null) {
-                ipv4 = address
-            }
         }
-        return ipv4
+        return linkLocal
     }
 
     private fun awaitInterfaceAddress(
@@ -636,13 +644,13 @@ class WifiP2pGroupManager(
         interfaceName: String,
         startupDeadlineNanos: Long,
     ): InetAddress? {
-        // Group creation precedes IPv6 link-local configuration on some head units.
-        // Give IPv6 a bounded chance to appear before falling back to IPv4.
+        // Prefer IPv4, but a platform that assigns the group no lease at all still has to work, so
+        // give IPv4 a bounded chance to appear before accepting the link-local fallback.
         val addressDeadline = minOf(startupDeadlineNanos, deadlineAfter(2_000))
         while (true) {
             ensureStartActive(attempt)
             val address = interfaceAddress(interfaceName)
-            if (address is Inet6Address || remainingNanos(addressDeadline) <= 0) return address
+            if (address is Inet4Address || remainingNanos(addressDeadline) <= 0) return address
             Thread.sleep(100)
         }
     }

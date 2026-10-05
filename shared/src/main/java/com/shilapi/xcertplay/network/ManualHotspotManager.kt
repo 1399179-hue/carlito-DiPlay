@@ -83,7 +83,24 @@ class ManualHotspotManager(
             )
         }
         if (!preferSystemConfiguration) validateApConfiguration(apConfiguration)
+        // The car's own hotspot module is the only truthful source on an ECARX head unit: the
+        // public WifiManager APIs are gone, the platform never broadcasts AP state and
+        // /data/system/car/wifi_ap_state does not exist on this firmware. Without this, a manual
+        // entry that the user typed correctly still could not be advertised, because the session
+        // has no real SSID/passphrase/BSSID to hand the phone.
+        val tcam = LynkTcamHotspotReader.read(context)
+        if (tcam != null) {
+            onDiagnostic("TCAM hotspot: enabled=${tcam.enabled} ssidKnown=${tcam.ssid != null} " +
+                "passphraseKnown=${tcam.passphrase != null} band=${tcam.band} channel=${tcam.channel}")
+        }
+        if (tcam?.enabled == false) {
+            throw WirelessStartupException(
+                WirelessStartupFailure.HOTSPOT_NOT_READY,
+                "The car reports its hotspot is off; turn it on in the head unit settings",
+            )
+        }
         val activeSsid = when {
+            tcam?.ssid != null -> tcam.ssid
             preferSystemConfiguration && apConfiguration != null -> apConfiguration.ssid
             expectedSsid != null -> expectedSsid
             apConfiguration != null -> apConfiguration.ssid
@@ -92,6 +109,7 @@ class ManualHotspotManager(
                 "The active hotspot configuration is not readable",
             )
         }
+        val tcamPassphrase = tcam?.passphrase?.takeIf { it.length in 8..63 && '\u0000' !in it }
 
         // 只在候选证据变化时记录，避免每 250ms 重复输出。
         val selected = ManualHotspotReadiness(
@@ -119,7 +137,7 @@ class ManualHotspotManager(
         val connectionFrequency = frequencyFromConnectionInfo(activeSsid)
         val scanFrequency = frequencyFromScanResult(localInterface, activeSsid)
         val channel = observedManualHotspotChannel(
-            apChannel = apConfiguration?.channel ?: 0,
+            apChannel = tcam?.channel ?: apConfiguration?.channel ?: 0,
             connectionFrequencyMHz = connectionFrequency,
             scanFrequencyMHz = scanFrequency,
             apFrequencyMHz = apConfiguration?.frequencyMHz,
@@ -135,7 +153,9 @@ class ManualHotspotManager(
             ?.takeIf { it.length in 8..63 && '\u0000' !in it }
         val effectivePassphrase = when (security) {
             Iap2WirelessSecurity.NONE -> ""
-            else -> systemPassphrase ?: passphrase
+            // The car's own value wins over both a saved entry and the platform's, because only
+            // the car knows what its hotspot actually broadcasts.
+            else -> tcamPassphrase ?: systemPassphrase ?: passphrase
         }
         onDiagnostic("Manual hotspot configReadable=${apConfiguration != null} " +
             "security=$security channelKnown=${channel > 0} " +
@@ -154,6 +174,16 @@ class ManualHotspotManager(
                     "$expectedChannel",
             )
         }
+        // A placeholder identity is worse than trying another backend: the phone associates
+        // nowhere and the session sits silent at tcpAccepted=0. Only advertise an observed BSSID.
+        val observedBssid = localInterface.hardwareAddress
+        if (observedBssid == null) {
+            throw WirelessStartupException(
+                WirelessStartupFailure.HOTSPOT_CONFIGURATION,
+                "Hotspot interface ${localInterface.name} exposes no hardware address, so a " +
+                    "BSSID cannot be advertised",
+            )
+        }
         val observedBandLabel = wifiBandLabel(apConfiguration?.band)
         return WirelessHotspotInfo(
             ssid = activeSsid,
@@ -161,7 +191,7 @@ class ManualHotspotManager(
             security = security,
             channel = channel,
             frequencyMHz = frequencyMHz,
-            bssid = localInterface.hardwareAddress,
+            bssid = observedBssid,
             interfaceName = localInterface.name,
             hostAddress = localInterface.hostAddress,
             bandLabel = when (expectedBand) {
