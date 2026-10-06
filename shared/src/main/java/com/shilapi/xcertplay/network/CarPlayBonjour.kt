@@ -246,10 +246,9 @@ class CarPlayBonjour(
                         val responder = runCatching {
                             CarPlayMdnsResponder(
                                 interfaceName = interfaceName,
-                                instanceName = "${config.deviceName}.${CarPlayMdnsProtocol.AIRPLAY_SERVICE_TYPE}",
+                                services = advertisedServices(),
                                 hostName = "${advertisedHostLabel()}.local",
                                 port = config.port,
-                                txt = CarPlayBonjourProtocol.airPlayTxtRecords(config, identity),
                                 log = { message -> Log.i(TAG, message) },
                             )
                         }.getOrNull()
@@ -374,6 +373,26 @@ class CarPlayBonjour(
             "advertisedHost must be link-local IPv6 or IPv4"
         }
         return address
+    }
+
+    /**
+     * Builds every service this accessory must answer for. The handset browses AirPlay *and* the
+     * CarPlay control channel; it only surfaces the CarPlay pairing entry once `_carplay-ctrl._tcp`
+     * has been answered, so publishing AirPlay alone leaves the phone with nothing to tap.
+     */
+    private fun advertisedServices(): List<CarPlayMdnsProtocol.MdnsService> {
+        val txt = CarPlayMdnsProtocol.encodeTxt(CarPlayBonjourProtocol.airPlayTxtRecords(config, identity))
+        return listOf(
+            CarPlayMdnsProtocol.AIRPLAY_SERVICE_TYPE,
+            CarPlayMdnsProtocol.CARPLAY_CONTROL_SERVICE_TYPE,
+            CarPlayMdnsProtocol.CARPLAY_PAIRING_SERVICE_TYPE,
+        ).map { type ->
+            CarPlayMdnsProtocol.MdnsService(
+                serviceType = type,
+                instanceName = "${config.deviceName}.$type",
+                txt = txt,
+            )
+        }
     }
 
     private fun advertisedHostLabel(): String {

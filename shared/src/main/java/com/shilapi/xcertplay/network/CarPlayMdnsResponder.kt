@@ -34,7 +34,21 @@ internal object CarPlayMdnsProtocol {
     const val PORT = 5353
 
     const val AIRPLAY_SERVICE_TYPE = "_airplay._tcp.local"
+    const val CARPLAY_CONTROL_SERVICE_TYPE = "_carplay-ctrl._tcp.local"
+    const val CARPLAY_PAIRING_SERVICE_TYPE = "_carplay-pairing._tcp.local"
     const val SERVICES_META_TYPE = "_services._dns-sd._udp.local"
+
+    /**
+     * One service this responder owns. [instanceName] is the fully qualified instance label the
+     * handset browses, which differs per service type: the same device is
+     * `xcertplay._airplay._tcp.local` for AirPlay but `xcertplay._carplay-ctrl._tcp.local` for the
+     * CarPlay control channel, so one name cannot serve both.
+     */
+    data class MdnsService(
+        val serviceType: String,
+        val instanceName: String,
+        val txt: ByteArray,
+    )
 
     const val TYPE_A = 1
     const val TYPE_PTR = 12
@@ -92,52 +106,61 @@ internal object CarPlayMdnsProtocol {
     }
 
     /**
-     * Builds the answer set for one query. Only records this responder owns are ever returned, so
-     * a query for an unrelated service produces an empty list and no reply.
+     * Builds the answer set for one query. Only records for services in [services] are ever
+     * returned, so a query for an unrelated service produces an empty list and no reply.
+     *
+     * A handset browses every service type the accessory owns and expects an answer to each. It
+     * queries `_carplay-ctrl._tcp` before it will offer the CarPlay pairing entry, so an responder
+     * that only owns AirPlay leaves the handset silent even though the AirPlay answer is correct.
      */
     fun answersFor(
         questions: List<Question>,
-        instance: String,
+        services: List<MdnsService>,
         hostName: String,
         port: Int,
         ipv4: ByteArray?,
         ipv6: ByteArray?,
-        txt: ByteArray,
     ): List<CarPlayMdnsRecord> {
         if (questions.isEmpty()) return emptyList()
-        val records = ArrayList<CarPlayMdnsRecord>(8)
-        val instanceName = instance.trimEnd('.')
+        val records = ArrayList<CarPlayMdnsRecord>(12)
         val host = hostName.trimEnd('.')
+        val byType = services.associateBy { it.serviceType }
+        val instanceToService = services.associateBy { it.instanceName.trimEnd('.').lowercase() }
         for (question in questions) {
-            when (question.name.lowercase()) {
-                AIRPLAY_SERVICE_TYPE -> {
+            val name = question.name.lowercase()
+            val owned = byType[name]
+            if (owned != null) {
+                if (question.type != TYPE_PTR && question.type != TYPE_ANY) continue
+                records += CarPlayMdnsRecord(
+                    name = owned.serviceType,
+                    type = TYPE_PTR,
+                    ttlSeconds = TTL_SERVICE_SECONDS,
+                    data = encodeName(owned.instanceName.trimEnd('.')),
+                )
+                records += serviceRecords(owned.instanceName, host, port, owned.txt)
+                records += hostRecords(host, ipv4, ipv6)
+                continue
+            }
+            when {
+                name == SERVICES_META_TYPE -> {
                     if (question.type != TYPE_PTR && question.type != TYPE_ANY) continue
-                    records += CarPlayMdnsRecord(
-                        name = AIRPLAY_SERVICE_TYPE,
-                        type = TYPE_PTR,
-                        ttlSeconds = TTL_SERVICE_SECONDS,
-                        data = encodeName(instanceName),
-                    )
-                    records += serviceRecords(instanceName, host, port, txt)
+                    for (service in services) {
+                        records += CarPlayMdnsRecord(
+                            name = SERVICES_META_TYPE,
+                            type = TYPE_PTR,
+                            ttlSeconds = TTL_SERVICE_SECONDS,
+                            data = encodeName(service.serviceType),
+                        )
+                    }
+                }
+
+                name in instanceToService -> {
+                    val service = instanceToService.getValue(name)
+                    records += serviceRecords(service.instanceName, host, port, service.txt)
                     records += hostRecords(host, ipv4, ipv6)
                 }
 
-                SERVICES_META_TYPE -> {
-                    if (question.type != TYPE_PTR && question.type != TYPE_ANY) continue
-                    records += CarPlayMdnsRecord(
-                        name = SERVICES_META_TYPE,
-                        type = TYPE_PTR,
-                        ttlSeconds = TTL_SERVICE_SECONDS,
-                        data = encodeName(AIRPLAY_SERVICE_TYPE),
-                    )
-                }
-
-                instanceName.lowercase() -> {
-                    records += serviceRecords(instanceName, host, port, txt)
-                    records += hostRecords(host, ipv4, ipv6)
-                }
-
-                host.lowercase() -> records += hostRecords(host, ipv4, ipv6)
+                name == host.lowercase() -> records += hostRecords(host, ipv4, ipv6)
             }
         }
         return records.distinctBy { it.type to it.name.lowercase() }
@@ -300,13 +323,11 @@ internal object CarPlayMdnsProtocol {
  */
 internal class CarPlayMdnsResponder(
     private val interfaceName: String,
-    private val instanceName: String,
+    private val services: List<CarPlayMdnsProtocol.MdnsService>,
     private val hostName: String,
     private val port: Int,
-    txt: Map<String, String>,
     private val log: (String) -> Unit,
 ) : Closeable {
-    private val txtBytes = CarPlayMdnsProtocol.encodeTxt(txt)
     private val closed = AtomicBoolean(false)
     private val reportedNeighbours = HashSet<String>()
 
@@ -335,7 +356,8 @@ internal class CarPlayMdnsResponder(
         val ipv6 = ipv6Addresses.firstOrNull { it.isLinkLocalAddress } ?: ipv6Addresses.firstOrNull()
         log(
             "mdns responder on $interfaceName ipv4=${ipv4?.hostAddress ?: "none"} " +
-                "ipv6=${ipv6?.hostAddress ?: "none"} instance=$instanceName host=$hostName",
+                "ipv6=${ipv6?.hostAddress ?: "none"} " +
+                "services=${services.joinToString { it.serviceType }} host=$hostName",
         )
         socketV4 = openSocket(CarPlayMdnsProtocol.GROUP_V4, networkInterface)
         socketV6 = if (ipv6 != null) openSocket(CarPlayMdnsProtocol.GROUP_V6, networkInterface) else null
@@ -385,15 +407,14 @@ internal class CarPlayMdnsResponder(
     private fun announce(ipv4: ByteArray?, ipv6: ByteArray?) {
         if (ipv4 == null && ipv6 == null) return
         val records = CarPlayMdnsProtocol.answersFor(
-            questions = listOf(
-                CarPlayMdnsProtocol.Question(CarPlayMdnsProtocol.AIRPLAY_SERVICE_TYPE, CarPlayMdnsProtocol.TYPE_ANY),
-            ),
-            instance = instanceName,
+            questions = services.map {
+                CarPlayMdnsProtocol.Question(it.serviceType, CarPlayMdnsProtocol.TYPE_ANY)
+            },
+            services = services,
             hostName = hostName,
             port = port,
             ipv4 = ipv4,
             ipv6 = ipv6,
-            txt = txtBytes,
         )
         if (records.isEmpty()) return
         val packet = CarPlayMdnsProtocol.encodeAnnouncement(records)
@@ -402,7 +423,10 @@ internal class CarPlayMdnsResponder(
             if (round > 0) Thread.sleep(ANNOUNCEMENT_INTERVAL_MILLIS)
             send(packet, null)
         }
-        log("mdns responder announced ${records.size} records for $instanceName on $interfaceName")
+        log(
+            "mdns responder announced ${records.size} records for " +
+                services.joinToString { it.instanceName } + " on $interfaceName",
+        )
     }
 
     private fun runLoop(ipv4: ByteArray?, ipv6: ByteArray?) {
@@ -448,12 +472,11 @@ internal class CarPlayMdnsResponder(
         )
         val records = CarPlayMdnsProtocol.answersFor(
             questions = questions,
-            instance = instanceName,
+            services = services,
             hostName = hostName,
             port = port,
             ipv4 = ipv4,
             ipv6 = ipv6,
-            txt = txtBytes,
         )
         if (records.isEmpty()) return
         val queryId = ((packet.data[0].toInt() and 0xff) shl 8) or (packet.data[1].toInt() and 0xff)
