@@ -1568,6 +1568,13 @@ class CarPlayController(
 
             override fun onSessionEnded(session: AirPlaySession) {
                 if (isStaleWirelessRun(generation)) return
+                if (!session.carriedCarPlaySession) {
+                    // A liveness probe against our own control port, not a handset that went away.
+                    // Reporting it as a lost session tore the whole stack down and reconnected in a
+                    // loop while the phone was still pairing.
+                    debugLog("airplay control probe closed peer=${session.host}; not a session loss")
+                    return
+                }
                 wirelessConnectionProof.end(generation, session)
                 sessionListener.onSessionEnded(session)
             }

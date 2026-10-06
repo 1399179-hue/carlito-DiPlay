@@ -82,6 +82,19 @@ class AirPlaySession(
 
     private val closed = AtomicBoolean(false)
     private val notified = AtomicBoolean(false)
+
+    /**
+     * True once the peer proved it is a real handset: it reached `SETUP`/`RECORD`, so the
+     * connection is a CarPlay session rather than something else talking to our control port.
+     *
+     * The Bonjour responder probes our own listener with `GET /ctrl-int/1/connect` to prove the
+     * endpoint is live, then closes. That probe is a connection we opened to ourselves, so its
+     * teardown must not be reported as a lost session -- doing so made the host tear the whole
+     * stack down and reconnect in a loop while the handset was still pairing. A real handset
+     * always gets past pairing to `SETUP` before it can be considered connected, so this flag
+     * separates the two without guessing from addresses.
+     */
+    private val carriedCarPlayTraffic = AtomicBoolean(false)
     private var eventServer: ServerSocket? = null
     private var eventSocket: Socket? = null
     private var eventCipher: ControlCipher? = null
@@ -101,6 +114,13 @@ class AirPlaySession(
     internal val remoteAddress: InetAddress?
         get() = (socket.remoteSocketAddress as? InetSocketAddress)?.address
     val controllerId: String? get() = pairVerify.verifiedControllerId
+
+    /**
+     * Whether this connection ever carried real CarPlay traffic. A false value means the peer only
+     * issued a liveness probe against our control port, so callers must not treat its end as the
+     * loss of a session.
+     */
+    val carriedCarPlaySession: Boolean get() = carriedCarPlayTraffic.get()
     val sharedSecret: ByteArray? get() = pairVerify.shared?.copyOf()
     val videoInCar: Boolean get() = config.videoInCar
     private val videoPlaybackAvailability = VideoPlaybackAvailability { allowed ->
@@ -510,8 +530,12 @@ class AirPlaySession(
 
     private fun handle(request: RtspMessage.Request): RtspMessage.Response {
         when (request.method) {
-            "SETUP" -> return handleSetup(request)
+            "SETUP" -> {
+                carriedCarPlayTraffic.set(true)
+                return handleSetup(request)
+            }
             "RECORD" -> {
+                carriedCarPlayTraffic.set(true)
                 listener.onSessionActive(this)
                 return RtspMessage.Response(status = 200)
             }
